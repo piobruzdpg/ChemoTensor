@@ -13,17 +13,17 @@ from scipy.sparse.linalg import spsolve
 from scipy.linalg import pinv
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LinearRegression  # Dla MSC
+from sklearn.linear_model import LinearRegression  # For MSC
 from sklearn.cross_decomposition import PLSRegression
-from sklearn.manifold import TSNE  # <-- NOWY IMPORT (v30)
-import umap.umap_ as umap  # <-- NOWY IMPORT (v30, wymaga pip install umap-learn)
+from sklearn.manifold import TSNE  # <-- NEW IMPORT (v30)
+import umap.umap_ as umap  # <-- NEW IMPORT (v30, requires pip install umap-learn)
 import tensorly as tl
 from pymcr.mcr import McrAR
 from pymcr.regressors import OLS, NNLS
 from pymcr.constraints import ConstraintNorm, ConstraintNonneg
 import openpyxl
 
-# --- Słownik motywów dla Matplotlib ---
+# --- Theme Dictionary for Matplotlib ---
 THEME_COLORS = {
     'Light': {'bg_color': '#ffffff', 'text_color': '#000000', 'grid_color': '#cccccc', 'spine_color': '#bbbbbb',
               'label_bg': 'white'},
@@ -31,7 +31,7 @@ THEME_COLORS = {
              'label_bg': '#2b2b2b'}
 }
 
-# --- Stałe Kolorów Statusu ---
+# --- Status Color Constants ---
 STATUS_COLORS = {
     'EMPTY': ctk.ThemeManager.theme["CTkButton"]["fg_color"], 'MISSING': "gray50", 'LOADED': "#2ECC71",
     'ERROR': "#E74C3C", 'FILLED': "#0096FF"
@@ -39,14 +39,14 @@ STATUS_COLORS = {
 SELECTED_BORDER_COLOR = "#3498DB"
 
 
-# --- Główna klasa aplikacji ---
+# --- Main Application Class ---
 class ChemTensorApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("ChemTensor Explorer")
         self.geometry("1400x1000")
 
-        # --- ZMIANA v33: Motyw na stałe ---
+        # --- CHANGE v33: Permanent Theme ---
         ctk.set_appearance_mode("Light")
         ctk.set_default_color_theme("blue")
 
@@ -62,7 +62,7 @@ class ChemTensorApp(ctk.CTk):
         self.tensor_data = None
         self.wavenumbers = None
 
-        # --- NOWE (v34): Lista plików i płaskie dane ---
+        # --- NEW (v34): File List and Flat Data ---
         self.loaded_files = []  # List of dicts: {'path': str, 'name': str, 'data': np.array, 'active': bool}
         self.flat_tensor_data = None  # 2D array (W, K)
 
@@ -78,7 +78,7 @@ class ChemTensorApp(ctk.CTk):
         self.show_preprocessed_var = ctk.BooleanVar(value=False)
         self.pipeline_mode_var = ctk.BooleanVar(value=False)
 
-        # Analiza
+        # Analysis
         self.current_plot_mode = 'SPECTRA'  # 'SPECTRA', 'PCA', 'RECONSTRUCTION', 'PARAFAC', 'MCR', 'TENSOR_RECONSTRUCTION', '3DCOS_SLICER', 'PLS_RESULTS', 'TUCKER_RESULTS', 'FA_RANK_RESULTS', 'FA_RECON_RESULTS', 'SPEXFA_RESULTS', 'HEATMAP', 'MANIFOLD_PLOT'
 
         self.fa_recon_components_var = ctk.StringVar(value="2")
@@ -111,15 +111,15 @@ class ChemTensorApp(ctk.CTk):
         self.tensor_recon_components_var = ctk.StringVar(value="2")
         self.tensor_recon_results = None
 
-        self.cos_axis_var = ctk.StringVar(value="Analizuj Kolumny (M)")
+        self.cos_axis_var = ctk.StringVar(value="Analyze Columns (M)")
         self.cos_slice_var = ctk.DoubleVar(value=0)
         self.cos_3d_results = None
 
-        self.pls_target_var = ctk.StringVar(value="Wybierz Cel (y)...")
+        self.pls_target_var = ctk.StringVar(value="Select Target (y)...")
         self.pls_target_map = {}
         self.pls_results = None
 
-        self.manifold_results = None  # NOWE (v30)
+        self.manifold_results = None  # NEW (v30)
 
         self.zoom_rects = {}
         self.zoom_start = {}
@@ -146,10 +146,10 @@ class ChemTensorApp(ctk.CTk):
         self.tabview = ctk.CTkTabview(self.control_frame)
         self.tabview.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
 
-        # --- Zakładka "Dane" ---
-        data_tab = self.tabview.add("Dane")
+        # --- "Data" Tab ---
+        data_tab = self.tabview.add("Data")
         preprocess_tab = self.tabview.add("Preprocessing")
-        analysis_tab = self.tabview.add("Analiza")
+        analysis_tab = self.tabview.add("Analysis")
         
         data_scroll_frame = ctk.CTkScrollableFrame(data_tab, fg_color="transparent")
         data_scroll_frame.pack(fill="both", expand=True)
@@ -163,86 +163,86 @@ class ChemTensorApp(ctk.CTk):
         analysis_scroll_frame.pack(fill="both", expand=True)
         analysis_scroll_frame.grid_columnconfigure(0, weight=1)
 
-        # --- ZMIANA v35: Układ pionowy (Lista nad Siatką) ---
+        # --- CHANGE v35: Vertical Layout (List above Grid) ---
         data_scroll_frame.grid_columnconfigure(0, weight=1)
-        # Usunięto podział na kolumny 0 i 1
+        # Removed column split 0 and 1
 
-        # --- SEKCJA 1: Lista Plików ---
+        # --- SECTION 1: File List ---
         file_section_frame = ctk.CTkFrame(data_scroll_frame, fg_color="transparent")
         file_section_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         file_section_frame.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(file_section_frame, text="Lista Plików Widmowych", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(file_section_frame, text="Spectral File List", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=5, pady=5, sticky="w")
 
-        self.file_list_frame = ctk.CTkScrollableFrame(file_section_frame, height=200) # Mniejsza wysokość, bo jest na górze
+        self.file_list_frame = ctk.CTkScrollableFrame(file_section_frame, height=200) # Smaller height because it is on top
         self.file_list_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
         file_actions_frame = ctk.CTkFrame(file_section_frame)
         file_actions_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
         file_actions_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
 
-        ctk.CTkButton(file_actions_frame, text="Dodaj Pliki...", command=self._load_data_files).grid(row=0, column=0, padx=5, pady=5, sticky="ew")
-        ctk.CTkButton(file_actions_frame, text="Zaznacz Wszystkie", command=lambda: self._set_all_files_active(True)).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-        ctk.CTkButton(file_actions_frame, text="Odznacz Wszystkie", command=lambda: self._set_all_files_active(False)).grid(row=0, column=2, padx=5, pady=5, sticky="ew")
-        ctk.CTkButton(file_actions_frame, text="Wyczyść Listę", command=self._clear_file_list, fg_color="#C0392B", hover_color="#E74C3C").grid(row=0, column=3, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(file_actions_frame, text="Add Files...", command=self._load_data_files).grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(file_actions_frame, text="Select All", command=lambda: self._set_all_files_active(True)).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(file_actions_frame, text="Deselect All", command=lambda: self._set_all_files_active(False)).grid(row=0, column=2, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(file_actions_frame, text="Clear List", command=self._clear_file_list, fg_color="#C0392B", hover_color="#E74C3C").grid(row=0, column=3, padx=5, pady=5, sticky="ew")
 
-        # --- SEKCJA 2: Konfiguracja Siatki ---
+        # --- SECTION 2: Grid Configuration ---
         config_frame = ctk.CTkFrame(data_scroll_frame)
         config_frame.grid(row=1, column=0, padx=5, pady=10, sticky="ew")
         config_frame.grid_columnconfigure((1, 3), weight=1)
         
-        ctk.CTkLabel(config_frame, text="Konfiguracja Siatki (Tensor 3D)", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=5, padx=5, pady=5, sticky="w")
+        ctk.CTkLabel(config_frame, text="Grid Configuration (3D Tensor)", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=5, padx=5, pady=5, sticky="w")
         
-        ctk.CTkLabel(config_frame, text="N (wiersze):").grid(row=1, column=0, padx=5, pady=5)
+        ctk.CTkLabel(config_frame, text="N (rows):").grid(row=1, column=0, padx=5, pady=5)
         ctk.CTkEntry(config_frame, textvariable=self.n_var, width=50).grid(row=1, column=1, padx=5, pady=5, sticky="w")
-        ctk.CTkLabel(config_frame, text="M (kolumny):").grid(row=1, column=2, padx=5, pady=5)
+        ctk.CTkLabel(config_frame, text="M (cols):").grid(row=1, column=2, padx=5, pady=5)
         ctk.CTkEntry(config_frame, textvariable=self.m_var, width=50).grid(row=1, column=3, padx=5, pady=5, sticky="w")
-        ctk.CTkButton(config_frame, text="Utwórz Pustą", command=self.safe_create_field_matrix, width=80).grid(row=1, column=4, padx=5, pady=5)
+        ctk.CTkButton(config_frame, text="Create Empty", command=self.safe_create_field_matrix, width=80).grid(row=1, column=4, padx=5, pady=5)
         
-        ctk.CTkButton(config_frame, text="Auto-rozmieść z Listy", command=self._auto_fill_grid_from_list, fg_color="#2980B9", hover_color="#3498DB").grid(row=2, column=0, columnspan=5, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(config_frame, text="Auto-arrange from List", command=self._auto_fill_grid_from_list, fg_color="#2980B9", hover_color="#3498DB").grid(row=2, column=0, columnspan=5, padx=5, pady=5, sticky="ew")
 
-        # --- SEKCJA 3: Podgląd Siatki ---
+        # --- SECTION 3: Grid Preview ---
         matrix_container = ctk.CTkFrame(data_scroll_frame, fg_color="transparent")
         matrix_container.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
         matrix_container.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(matrix_container, text="Podgląd Siatki").grid(row=0, column=0, sticky="w", padx=5)
+        ctk.CTkLabel(matrix_container, text="Grid Preview").grid(row=0, column=0, sticky="w", padx=5)
         self.field_matrix_frame = ctk.CTkFrame(matrix_container)
         self.field_matrix_frame.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
 
-        # --- SEKCJA 4: Zakres ---
+        # --- SECTION 4: Range ---
         range_frame = ctk.CTkFrame(data_scroll_frame)
         range_frame.grid(row=3, column=0, padx=5, pady=10, sticky="ew")
         range_frame.grid_columnconfigure((1, 3), weight=1)
-        ctk.CTkLabel(range_frame, text="Zakres Danych (Oś X)", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=4, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(range_frame, text="Data Range (X Axis)", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=4, padx=10, pady=5, sticky="w")
         ctk.CTkLabel(range_frame, text="Min:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         ctk.CTkEntry(range_frame, textvariable=self.range_min_var, width=60).grid(row=1, column=1, padx=5, pady=5, sticky="ew")
         ctk.CTkLabel(range_frame, text="Max:").grid(row=1, column=2, padx=5, pady=5, sticky="w")
         ctk.CTkEntry(range_frame, textvariable=self.range_max_var, width=60).grid(row=1, column=3, padx=5, pady=5, sticky="ew")
-        ctk.CTkButton(range_frame, text="Zastosuj", command=self._apply_wavenumber_range).grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
-        ctk.CTkButton(range_frame, text="Resetuj", command=self._reset_wavenumber_range).grid(row=2, column=2, columnspan=2, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(range_frame, text="Apply", command=self._apply_wavenumber_range).grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(range_frame, text="Reset", command=self._reset_wavenumber_range).grid(row=2, column=2, columnspan=2, padx=5, pady=5, sticky="ew")
 
-        # --- SEKCJA 5: Projekt ---
+        # --- SECTION 5: Project ---
         action_frame = ctk.CTkFrame(data_scroll_frame)
         action_frame.grid(row=4, column=0, padx=5, pady=10, sticky="ew")
         action_frame.grid_columnconfigure((0, 1), weight=1)
-        ctk.CTkButton(action_frame, text="Zapisz Projekt...", command=self._save_project).grid(row=0, column=0, padx=5, pady=5, sticky="ew")
-        ctk.CTkButton(action_frame, text="Wczytaj Projekt...", command=self._load_project).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-        ctk.CTkButton(action_frame, text="Eksportuj Wyniki...", command=self._export_to_xlsx).grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(action_frame, text="Save Project...", command=self._save_project).grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(action_frame, text="Load Project...", command=self._load_project).grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        ctk.CTkButton(action_frame, text="Export Results...", command=self._export_to_xlsx).grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
-        # --- Zakładka "Wizualizacja" USUNIĘTA (zgodnie z prośbą) ---
+        # --- "Visualization" Tab REMOVED (as requested) ---
 
-        # --- Kontrolki Zakładki "Preprocessing" ---
-        # --- Kontrolki Zakładki "Preprocessing" ---
+        # --- "Preprocessing" Tab Controls ---
+        # --- "Preprocessing" Tab Controls ---
         
-        # Przełącznik "Pokaż dane po preprocessingu" (przeniesiony z Wizualizacji)
+        # Switch "Show preprocessed data" (moved from Visualization)
         self.show_preprocessed_switch = ctk.CTkCheckBox(preprocess_scroll_frame,
-                                                        text="Pokaż dane po preprocessingu na wykresie",
+                                                        text="Show preprocessed data on plot",
                                                         variable=self.show_preprocessed_var,
                                                         command=self.update_plot)
         self.show_preprocessed_switch.grid(row=0, column=0, padx=10, pady=5, sticky="w")
 
         self.pipeline_switch = ctk.CTkCheckBox(preprocess_scroll_frame,
-                                               text="Kontynuuj przetwarzanie (zastosuj do wyniku)",
+                                               text="Continue processing (apply to result)",
                                                variable=self.pipeline_mode_var)
         self.pipeline_switch.grid(row=1, column=0, padx=10, pady=5, sticky="w")
 
@@ -250,15 +250,15 @@ class ChemTensorApp(ctk.CTk):
         sg_frame.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
         sg_frame.grid_columnconfigure(1, weight=1)
         sg_frame.configure(border_width=1, border_color="gray50")
-        ctk.CTkLabel(sg_frame, text="Wygładzanie / Pochodne", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0,
+        ctk.CTkLabel(sg_frame, text="Smoothing / Derivatives", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0,
                                                                                                     columnspan=2,
                                                                                                     padx=10, pady=5,
                                                                                                     sticky="w")
-        ctk.CTkLabel(sg_frame, text="Szerokość Okna:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(sg_frame, text="Window Width:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
         ctk.CTkEntry(sg_frame, textvariable=self.sg_window_var).grid(row=1, column=1, padx=10, pady=5, sticky="ew")
-        ctk.CTkLabel(sg_frame, text="Stopień Wielomianu:").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(sg_frame, text="Polynomial Degree:").grid(row=2, column=0, padx=10, pady=5, sticky="w")
         ctk.CTkEntry(sg_frame, textvariable=self.sg_poly_var).grid(row=2, column=1, padx=10, pady=5, sticky="ew")
-        ctk.CTkButton(sg_frame, text="Zastosuj Savitzky-Golay (2. Pochodna)", command=self._apply_sg_filter).grid(row=3,
+        ctk.CTkButton(sg_frame, text="Apply Savitzky-Golay (2nd Derivative)", command=self._apply_sg_filter).grid(row=3,
                                                                                                                   column=0,
                                                                                                                   columnspan=2,
                                                                                                                   padx=10,
@@ -269,70 +269,70 @@ class ChemTensorApp(ctk.CTk):
         norm_frame.grid(row=3, column=0, padx=5, pady=10, sticky="ew")
         norm_frame.grid_columnconfigure((0, 1), weight=1)
         norm_frame.configure(border_width=1, border_color="gray50")
-        ctk.CTkLabel(norm_frame, text="Normalizacja", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0,
+        ctk.CTkLabel(norm_frame, text="Normalization", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0,
                                                                                             columnspan=2, padx=10,
                                                                                             pady=5, sticky="w")
-        ctk.CTkButton(norm_frame, text="Zastosuj SNV", command=self._apply_snv).grid(row=1, column=0, padx=5, pady=5,
+        ctk.CTkButton(norm_frame, text="Apply SNV", command=self._apply_snv).grid(row=1, column=0, padx=5, pady=5,
                                                                                      sticky="ew")
-        ctk.CTkButton(norm_frame, text="Zastosuj Min-Max (0-1)", command=self._apply_min_max).grid(row=1, column=1,
+        ctk.CTkButton(norm_frame, text="Apply Min-Max (0-1)", command=self._apply_min_max).grid(row=1, column=1,
                                                                                                    padx=5, pady=5,
                                                                                                    sticky="ew")
-        ctk.CTkButton(norm_frame, text="Zastosuj Normę (Pole Powierzchni)", command=self._apply_l1_norm).grid(row=2,
+        ctk.CTkButton(norm_frame, text="Apply Norm (Area)", command=self._apply_l1_norm).grid(row=2,
                                                                                                               column=0,
                                                                                                               padx=5,
                                                                                                               pady=5,
                                                                                                               sticky="ew")
-        ctk.CTkButton(norm_frame, text="Zastosuj MSC", command=self._apply_msc).grid(row=2, column=1, padx=5, pady=5,
+        ctk.CTkButton(norm_frame, text="Apply MSC", command=self._apply_msc).grid(row=2, column=1, padx=5, pady=5,
                                                                                      sticky="ew")
 
         als_frame = ctk.CTkFrame(preprocess_scroll_frame)
         als_frame.grid(row=4, column=0, padx=5, pady=10, sticky="ew")
         als_frame.grid_columnconfigure(1, weight=1)
         als_frame.configure(border_width=1, border_color="gray50")
-        ctk.CTkLabel(als_frame, text="Korekcja Linii Bazowej (ALS)", font=ctk.CTkFont(weight="bold")).grid(row=0,
+        ctk.CTkLabel(als_frame, text="Baseline Correction (ALS)", font=ctk.CTkFont(weight="bold")).grid(row=0,
                                                                                                            column=0,
                                                                                                            columnspan=2,
                                                                                                            padx=10,
                                                                                                            pady=5,
                                                                                                            sticky="w")
-        ctk.CTkLabel(als_frame, text="Lambda (gładkość):").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(als_frame, text="Lambda (smoothness):").grid(row=1, column=0, padx=10, pady=5, sticky="w")
         ctk.CTkEntry(als_frame, textvariable=self.als_lambda_var).grid(row=1, column=1, padx=10, pady=5, sticky="ew")
-        ctk.CTkLabel(als_frame, text="P (asymetria):").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(als_frame, text="P (asymmetry):").grid(row=2, column=0, padx=10, pady=5, sticky="w")
         ctk.CTkEntry(als_frame, textvariable=self.als_p_var).grid(row=2, column=1, padx=10, pady=5, sticky="ew")
-        ctk.CTkButton(als_frame, text="Zastosuj Korekcję ALS", command=self._apply_als).grid(row=3, column=0,
+        ctk.CTkButton(als_frame, text="Apply ALS Correction", command=self._apply_als).grid(row=3, column=0,
                                                                                              columnspan=2, padx=10,
                                                                                              pady=10, sticky="ew")
 
-        # --- Kontrolki Zakładki "Analiza" ---
+        # --- "Analysis" Tab Controls ---
         fa_frame = ctk.CTkFrame(analysis_scroll_frame)
         fa_frame.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
         fa_frame.grid_columnconfigure(1, weight=1)
         fa_frame.configure(border_width=1, border_color="gray50")
-        ctk.CTkLabel(fa_frame, text="Analiza Faktorowa (Malinowski, pfa.m)", font=ctk.CTkFont(weight="bold")).grid(
+        ctk.CTkLabel(fa_frame, text="Factor Analysis (Malinowski, pfa.m)", font=ctk.CTkFont(weight="bold")).grid(
             row=0, column=0, columnspan=2, padx=10, pady=5, sticky="w")
-        ctk.CTkButton(fa_frame, text="Uruchom Analizę Rangi (RE/IND)", command=self._run_fa_rank_analysis).grid(row=1,
+        ctk.CTkButton(fa_frame, text="Run Rank Analysis (RE/IND)", command=self._run_fa_rank_analysis).grid(row=1,
                                                                                                                 column=0,
                                                                                                                 columnspan=2,
                                                                                                                 padx=10,
                                                                                                                 pady=10,
                                                                                                                 sticky="ew")
-        ctk.CTkLabel(fa_frame, text="L. faktorów (do rekonstrukcji):").grid(row=2, column=0, padx=10, pady=5,
+        ctk.CTkLabel(fa_frame, text="No. of factors (for reconstruction):").grid(row=2, column=0, padx=10, pady=5,
                                                                             sticky="w")
         ctk.CTkEntry(fa_frame, textvariable=self.fa_recon_components_var).grid(row=2, column=1, padx=10, pady=5,
                                                                                sticky="ew")
-        ctk.CTkButton(fa_frame, text="Uruchom Rekonstrukcję FA (pfa.m)", command=self._run_fa_reconstruction).grid(
+        ctk.CTkButton(fa_frame, text="Run FA Reconstruction (pfa.m)", command=self._run_fa_reconstruction).grid(
             row=3, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
 
         spexfa_frame = ctk.CTkFrame(analysis_scroll_frame)
         spexfa_frame.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
         spexfa_frame.grid_columnconfigure(1, weight=1)
         spexfa_frame.configure(border_width=1, border_color="gray50")
-        ctk.CTkLabel(spexfa_frame, text="Izolacja Widm Faktorów (spexfa.m)", font=ctk.CTkFont(weight="bold")).grid(
+        ctk.CTkLabel(spexfa_frame, text="Factor Spectra Isolation (spexfa.m)", font=ctk.CTkFont(weight="bold")).grid(
             row=0, column=0, columnspan=2, padx=10, pady=5, sticky="w")
-        ctk.CTkLabel(spexfa_frame, text="Liczba faktorów:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(spexfa_frame, text="Number of factors:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
         ctk.CTkEntry(spexfa_frame, textvariable=self.spexfa_n_components_var).grid(row=1, column=1, padx=10, pady=5,
                                                                                    sticky="ew")
-        ctk.CTkButton(spexfa_frame, text="Uruchom Izolację Widm (spexfa)", command=self._run_spexfa).grid(row=2,
+        ctk.CTkButton(spexfa_frame, text="Run Spectra Isolation (spexfa)", command=self._run_spexfa).grid(row=2,
                                                                                                           column=0,
                                                                                                           columnspan=2,
                                                                                                           padx=10,
@@ -343,16 +343,16 @@ class ChemTensorApp(ctk.CTk):
         pca_frame.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
         pca_frame.grid_columnconfigure(1, weight=1)
         pca_frame.configure(border_width=1, border_color="gray50")
-        ctk.CTkLabel(pca_frame, text="PCA (Analiza Głównych Składowych)", font=ctk.CTkFont(weight="bold")).grid(row=0,
+        ctk.CTkLabel(pca_frame, text="PCA (Principal Component Analysis)", font=ctk.CTkFont(weight="bold")).grid(row=0,
                                                                                                                 column=0,
                                                                                                                 columnspan=2,
                                                                                                                 padx=10,
                                                                                                                 pady=5,
                                                                                                                 sticky="w")
-        ctk.CTkLabel(pca_frame, text="Liczba Komponentów:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(pca_frame, text="Number of Components:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
         ctk.CTkEntry(pca_frame, textvariable=self.pca_n_components_var).grid(row=1, column=1, padx=10, pady=5,
                                                                              sticky="ew")
-        ctk.CTkButton(pca_frame, text="Uruchom PCA na Zaznaczonych Danych", command=self._run_pca).grid(row=2, column=0,
+        ctk.CTkButton(pca_frame, text="Run PCA on Selected Data", command=self._run_pca).grid(row=2, column=0,
                                                                                                         columnspan=2,
                                                                                                         padx=10,
                                                                                                         pady=10,
@@ -362,17 +362,17 @@ class ChemTensorApp(ctk.CTk):
         recon_frame.grid(row=3, column=0, padx=5, pady=10, sticky="ew")
         recon_frame.grid_columnconfigure(1, weight=1)
         recon_frame.configure(border_width=1, border_color="gray50")
-        ctk.CTkLabel(recon_frame, text="Rekonstrukcja Danych PCA", font=ctk.CTkFont(weight="bold")).grid(row=0,
+        ctk.CTkLabel(recon_frame, text="PCA Data Reconstruction", font=ctk.CTkFont(weight="bold")).grid(row=0,
                                                                                                          column=0,
                                                                                                          columnspan=2,
                                                                                                          padx=10,
                                                                                                          pady=5,
                                                                                                          sticky="w")
-        ctk.CTkLabel(recon_frame, text="Liczba składowych do odtworzenia:").grid(row=1, column=0, padx=10, pady=5,
+        ctk.CTkLabel(recon_frame, text="Number of components to reconstruct:").grid(row=1, column=0, padx=10, pady=5,
                                                                                  sticky="w")
         ctk.CTkEntry(recon_frame, textvariable=self.pca_recon_components_var).grid(row=1, column=1, padx=10, pady=5,
                                                                                    sticky="ew")
-        ctk.CTkButton(recon_frame, text="Odtwórz Dane (z PCA)", command=self._run_reconstruction).grid(row=2, column=0,
+        ctk.CTkButton(recon_frame, text="Reconstruct Data (from PCA)", command=self._run_reconstruction).grid(row=2, column=0,
                                                                                                        columnspan=2,
                                                                                                        padx=10, pady=10,
                                                                                                        sticky="ew")
@@ -385,14 +385,14 @@ class ChemTensorApp(ctk.CTk):
                                                                                                      columnspan=2,
                                                                                                      padx=10, pady=5,
                                                                                                      sticky="w")
-        ctk.CTkLabel(parafac_frame, text="Liczba Składowych (Ranga):").grid(row=1, column=0, padx=10, pady=5,
+        ctk.CTkLabel(parafac_frame, text="Number of Components (Rank):").grid(row=1, column=0, padx=10, pady=5,
                                                                             sticky="w")
         ctk.CTkEntry(parafac_frame, textvariable=self.parafac_rank_var).grid(row=1, column=1, padx=10, pady=5,
                                                                              sticky="ew")
-        ctk.CTkCheckBox(parafac_frame, text="Wymuś Nieujemność (NN-PARAFAC)",
+        ctk.CTkCheckBox(parafac_frame, text="Enforce Non-negativity (NN-PARAFAC)",
                         variable=self.parafac_non_negative_var).grid(row=2, column=0, columnspan=2, padx=10, pady=10,
                                                                      sticky="w")
-        ctk.CTkButton(parafac_frame, text="Uruchom PARAFAC na Całym Tensorze", command=self._run_parafac).grid(row=3,
+        ctk.CTkButton(parafac_frame, text="Run PARAFAC on Entire Tensor", command=self._run_parafac).grid(row=3,
                                                                                                                column=0,
                                                                                                                columnspan=2,
                                                                                                                padx=10,
@@ -403,22 +403,22 @@ class ChemTensorApp(ctk.CTk):
         tucker_frame.grid(row=5, column=0, padx=5, pady=10, sticky="ew")
         tucker_frame.grid_columnconfigure(1, weight=1)
         tucker_frame.configure(border_width=1, border_color="gray50")
-        ctk.CTkLabel(tucker_frame, text="Dekompozycja Tuckera (Tensorly)", font=ctk.CTkFont(weight="bold")).grid(row=0,
+        ctk.CTkLabel(tucker_frame, text="Tucker Decomposition (Tensorly)", font=ctk.CTkFont(weight="bold")).grid(row=0,
                                                                                                                  column=0,
                                                                                                                  columnspan=2,
                                                                                                                  padx=10,
                                                                                                                  pady=5,
                                                                                                                  sticky="w")
-        ctk.CTkLabel(tucker_frame, text="Ranga Widm (W):").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(tucker_frame, text="Spectral Rank (W):").grid(row=1, column=0, padx=10, pady=5, sticky="w")
         ctk.CTkEntry(tucker_frame, textvariable=self.tucker_rank_w_var).grid(row=1, column=1, padx=10, pady=5,
                                                                              sticky="ew")
-        ctk.CTkLabel(tucker_frame, text="Ranga Wierszy (N):").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(tucker_frame, text="Row Rank (N):").grid(row=2, column=0, padx=10, pady=5, sticky="w")
         ctk.CTkEntry(tucker_frame, textvariable=self.tucker_rank_n_var).grid(row=2, column=1, padx=10, pady=5,
                                                                              sticky="ew")
-        ctk.CTkLabel(tucker_frame, text="Ranga Kolumn (M):").grid(row=3, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(tucker_frame, text="Column Rank (M):").grid(row=3, column=0, padx=10, pady=5, sticky="w")
         ctk.CTkEntry(tucker_frame, textvariable=self.tucker_rank_m_var).grid(row=3, column=1, padx=10, pady=5,
                                                                              sticky="ew")
-        ctk.CTkButton(tucker_frame, text="Uruchom Analizę Tuckera", command=self._run_tucker).grid(row=4, column=0,
+        ctk.CTkButton(tucker_frame, text="Run Tucker Analysis", command=self._run_tucker).grid(row=4, column=0,
                                                                                                    columnspan=2,
                                                                                                    padx=10, pady=10,
                                                                                                    sticky="ew")
@@ -430,35 +430,35 @@ class ChemTensorApp(ctk.CTk):
         ctk.CTkLabel(mcr_frame, text="MCR-ALS (pyMCR)", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0,
                                                                                               columnspan=2, padx=10,
                                                                                               pady=5, sticky="w")
-        ctk.CTkLabel(mcr_frame, text="Liczba Składowych:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(mcr_frame, text="Number of Components:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
         ctk.CTkEntry(mcr_frame, textvariable=self.mcr_n_components_var).grid(row=1, column=1, padx=10, pady=5,
                                                                              sticky="ew")
-        ctk.CTkLabel(mcr_frame, text="Max Iteracji:").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(mcr_frame, text="Max Iterations:").grid(row=2, column=0, padx=10, pady=5, sticky="w")
         ctk.CTkEntry(mcr_frame, textvariable=self.mcr_max_iter_var).grid(row=2, column=1, padx=10, pady=5,
                                                                          sticky="ew")
 
-        ctk.CTkCheckBox(mcr_frame, text="Wymuś Nieujemność (NNLS)", variable=self.mcr_non_negative_var).grid(row=3,
+        ctk.CTkCheckBox(mcr_frame, text="Enforce Non-negativity (NNLS)", variable=self.mcr_non_negative_var).grid(row=3,
                                                                                                              column=0,
                                                                                                              columnspan=2,
                                                                                                              padx=10,
                                                                                                              pady=10,
                                                                                                              sticky="w")
-        ctk.CTkCheckBox(mcr_frame, text="Wymuś sumę stężeń do 1 (Norm)", variable=self.mcr_norm_var).grid(row=4,
+        ctk.CTkCheckBox(mcr_frame, text="Enforce concentration sum to 1 (Norm)", variable=self.mcr_norm_var).grid(row=4,
                                                                                                           column=0,
                                                                                                           columnspan=2,
                                                                                                           padx=10,
                                                                                                           pady=10,
                                                                                                           sticky="w")
-        ctk.CTkButton(mcr_frame, text="Załaduj Znane Widmo (ST_fix)...", command=self._load_mcr_st_init).grid(row=5,
+        ctk.CTkButton(mcr_frame, text="Load Known Spectrum (ST_fix)...", command=self._load_mcr_st_init).grid(row=5,
                                                                                                               column=0,
                                                                                                               columnspan=2,
                                                                                                               padx=10,
                                                                                                               pady=5,
                                                                                                               sticky="ew")
-        ctk.CTkLabel(mcr_frame, text="Indeks(y) widm do zamrożenia (np. 0 lub 0,2):").grid(row=6, column=0, padx=10,
+        ctk.CTkLabel(mcr_frame, text="Spectrum index(es) to freeze (e.g. 0 or 0,2):").grid(row=6, column=0, padx=10,
                                                                                            pady=5, sticky="w")
         ctk.CTkEntry(mcr_frame, textvariable=self.mcr_st_fix_var).grid(row=6, column=1, padx=10, pady=5, sticky="ew")
-        ctk.CTkButton(mcr_frame, text="Uruchom MCR-ALS na Całym Tensorze", command=self._run_mcr_als).grid(row=7,
+        ctk.CTkButton(mcr_frame, text="Run MCR-ALS on Entire Tensor", command=self._run_mcr_als).grid(row=7,
                                                                                                            column=0,
                                                                                                            columnspan=2,
                                                                                                            padx=10,
@@ -469,18 +469,18 @@ class ChemTensorApp(ctk.CTk):
         tensor_recon_frame.grid(row=7, column=0, padx=5, pady=10, sticky="ew")
         tensor_recon_frame.grid_columnconfigure((0, 1), weight=1)
         tensor_recon_frame.configure(border_width=1, border_color="gray50")
-        ctk.CTkLabel(tensor_recon_frame, text="Rekonstrukcja Tensora (PARAFAC/MCR)",
+        ctk.CTkLabel(tensor_recon_frame, text="Tensor Reconstruction (PARAFAC/MCR)",
                      font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=2, padx=10, pady=5, sticky="w")
-        ctk.CTkLabel(tensor_recon_frame, text="Liczba składowych do odtworzenia:").grid(row=1, column=0, padx=10,
+        ctk.CTkLabel(tensor_recon_frame, text="Number of components to reconstruct:").grid(row=1, column=0, padx=10,
                                                                                         pady=5, sticky="w")
         ctk.CTkEntry(tensor_recon_frame, textvariable=self.tensor_recon_components_var).grid(row=1, column=1, padx=10,
                                                                                              pady=5, sticky="ew")
-        ctk.CTkButton(tensor_recon_frame, text="Odtwórz z PARAFAC", command=self._run_parafac_recon).grid(row=2,
+        ctk.CTkButton(tensor_recon_frame, text="Reconstruct from PARAFAC", command=self._run_parafac_recon).grid(row=2,
                                                                                                           column=0,
                                                                                                           padx=5,
                                                                                                           pady=10,
                                                                                                           sticky="ew")
-        ctk.CTkButton(tensor_recon_frame, text="Odtwórz z MCR", command=self._run_mcr_recon).grid(row=2, column=1,
+        ctk.CTkButton(tensor_recon_frame, text="Reconstruct from MCR", command=self._run_mcr_recon).grid(row=2, column=1,
                                                                                                   padx=5, pady=10,
                                                                                                   sticky="ew")
 
@@ -491,16 +491,16 @@ class ChemTensorApp(ctk.CTk):
         ctk.CTkLabel(cos_frame, text="2D-COS (Noda-Ozaki)", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0,
                                                                                                   columnspan=2, padx=10,
                                                                                                   pady=5, sticky="w")
-        ctk.CTkLabel(cos_frame, text="Oś Perturbacji:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(cos_frame, text="Perturbation Axis:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
         ctk.CTkOptionMenu(cos_frame, variable=self.cos_axis_var,
-                          values=["Analizuj Wiersze (N)", "Analizuj Kolumny (M)"]).grid(row=1, column=1, padx=10,
+                          values=["Analyze Rows (N)", "Analyze Columns (M)"]).grid(row=1, column=1, padx=10,
                                                                                         pady=5, sticky="ew")
-        ctk.CTkButton(cos_frame, text="Uruchom Analizę 3D-COS (Kostka)", command=self._run_3dcos).grid(row=2, column=0,
+        ctk.CTkButton(cos_frame, text="Run 3D-COS Analysis (Cube)", command=self._run_3dcos).grid(row=2, column=0,
                                                                                                        columnspan=2,
                                                                                                        padx=10, pady=10,
                                                                                                        sticky="ew")
 
-        self.cos_slider_label = ctk.CTkLabel(cos_frame, text="Plaster Modulatora (0):")
+        self.cos_slider_label = ctk.CTkLabel(cos_frame, text="Modulator Slice (0):")
         self.cos_slider_label.grid(row=3, column=0, padx=10, pady=5, sticky="w")
         self.cos_slider = ctk.CTkSlider(cos_frame, from_=0, to=1, number_of_steps=1, variable=self.cos_slice_var,
                                         command=self._on_cos_slider_change)
@@ -512,46 +512,46 @@ class ChemTensorApp(ctk.CTk):
         pls_frame.grid(row=9, column=0, padx=5, pady=10, sticky="ew")
         pls_frame.grid_columnconfigure(1, weight=1)
         pls_frame.configure(border_width=1, border_color="gray50")
-        ctk.CTkLabel(pls_frame, text="Analiza PLS (Ważność Zmiennych)", font=ctk.CTkFont(weight="bold")).grid(row=0,
+        ctk.CTkLabel(pls_frame, text="PLS Analysis (Variable Importance)", font=ctk.CTkFont(weight="bold")).grid(row=0,
                                                                                                               column=0,
                                                                                                               columnspan=2,
                                                                                                               padx=10,
                                                                                                               pady=5,
                                                                                                               sticky="w")
-        ctk.CTkLabel(pls_frame, text="Wybierz Cel (y):").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkLabel(pls_frame, text="Select Target (y):").grid(row=1, column=0, padx=10, pady=5, sticky="w")
         self.pls_target_menu = ctk.CTkOptionMenu(pls_frame, variable=self.pls_target_var,
-                                                 values=["Brak wyników (uruchom MCR lub PARAFAC)"])
+                                                 values=["No results (run MCR or PARAFAC)"])
         self.pls_target_menu.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
-        ctk.CTkButton(pls_frame, text="Uruchom Analizę PLS", command=self._run_pls).grid(row=2, column=0, columnspan=2,
+        ctk.CTkButton(pls_frame, text="Run PLS Analysis", command=self._run_pls).grid(row=2, column=0, columnspan=2,
                                                                                          padx=10, pady=10, sticky="ew")
 
         manifold_frame = ctk.CTkFrame(analysis_scroll_frame)
         manifold_frame.grid(row=10, column=0, padx=5, pady=10, sticky="ew")
         manifold_frame.grid_columnconfigure((0, 1), weight=1)
         manifold_frame.configure(border_width=1, border_color="gray50")
-        ctk.CTkLabel(manifold_frame, text="Nieliniowa Redukcja Wymiaru", font=ctk.CTkFont(weight="bold")).grid(row=0,
+        ctk.CTkLabel(manifold_frame, text="Non-linear Dimensionality Reduction", font=ctk.CTkFont(weight="bold")).grid(row=0,
                                                                                                                column=0,
                                                                                                                columnspan=2,
                                                                                                                padx=10,
                                                                                                                pady=5,
                                                                                                                sticky="w")
-        ctk.CTkButton(manifold_frame, text="Uruchom UMAP (na zaznaczonych)", command=self._run_umap).grid(row=1,
+        ctk.CTkButton(manifold_frame, text="Run UMAP (on selected)", command=self._run_umap).grid(row=1,
                                                                                                           column=0,
                                                                                                           padx=5,
                                                                                                           pady=10,
                                                                                                           sticky="ew")
-        ctk.CTkButton(manifold_frame, text="Uruchom t-SNE (na zaznaczonych)", command=self._run_tsne).grid(row=1,
+        ctk.CTkButton(manifold_frame, text="Run t-SNE (on selected)", command=self._run_tsne).grid(row=1,
                                                                                                            column=1,
                                                                                                            padx=5,
                                                                                                            pady=10,
                                                                                                            sticky="ew")
 
-        # --- Zakładka Ustawienia została usunięta ---
+        # --- Settings Tab has been removed ---
 
     def safe_create_field_matrix(self):
         if self.original_tensor_data is not None:
-            if not messagebox.askyesno("Potwierdzenie",
-                                       "Utworzenie nowej siatki usunie wszystkie wczytane dane.\nCzy chcesz kontynuować?"):
+            if not messagebox.askyesno("Confirmation",
+                                       "Creating a new grid will remove all loaded data.\nDo you want to continue?"):
                 return
         self._create_field_matrix()
         self.focus_set()
@@ -579,14 +579,14 @@ class ChemTensorApp(ctk.CTk):
             self.m_cols = int(self.m_var.get())
             if self.n_rows <= 0 or self.m_cols <= 0: raise ValueError
         except ValueError:
-            messagebox.showerror("Błąd", "N i M muszą być dodatnimi liczbami całkowitymi.")
+            messagebox.showerror("Error", "N and M must be positive integers.")
             return
 
         for c_idx in range(self.m_cols): self.field_matrix_frame.grid_columnconfigure(c_idx, weight=1)
         for r_idx in range(self.n_rows):
             for c_idx in range(self.m_cols):
                 coords = (r_idx, c_idx)
-                cell_text = f"({r_idx}, {c_idx})\nPusty"
+                cell_text = f"({r_idx}, {c_idx})\nEmpty"
                 btn = ctk.CTkButton(self.field_matrix_frame, text=cell_text, height=60, fg_color=STATUS_COLORS['EMPTY'],
                                     border_width=0)
                 btn.grid(row=r_idx, column=c_idx, padx=1, pady=1, sticky="nsew")
@@ -616,18 +616,18 @@ class ChemTensorApp(ctk.CTk):
         context_menu = Menu(self, tearoff=0)
         status = self.field_matrix_status.get(coords)
         if status != 'LOADED':
-            context_menu.add_command(label="Oznacz jako BRAK DANYCH",
+            context_menu.add_command(label="Mark as MISSING DATA",
                                      command=lambda: self._mark_cell_as_missing(coords))
-            context_menu.add_command(label="Oznacz jako Pusty", command=lambda: self._mark_cell_as_empty(coords))
+            context_menu.add_command(label="Mark as Empty", command=lambda: self._mark_cell_as_empty(coords))
         if status in ['MISSING', 'ERROR'] and self.original_tensor_data is not None:
             context_menu.add_separator()
-            context_menu.add_command(label="Wypełnij zerami", command=lambda: self._fill_cell_with_zeros(coords))
-            context_menu.add_command(label="Wypełnij średnią wiersza",
+            context_menu.add_command(label="Fill with zeros", command=lambda: self._fill_cell_with_zeros(coords))
+            context_menu.add_command(label="Fill with row mean",
                                      command=lambda: self._fill_cell_with_row_mean(coords))
-            context_menu.add_command(label="Wypełnij średnią kolumny",
+            context_menu.add_command(label="Fill with column mean",
                                      command=lambda: self._fill_cell_with_col_mean(coords))
         if status.startswith('LOADED') or status.startswith('FILLED'):
-            context_menu.add_command(label="Resetuj (Oznacz jako Pusty)",
+            context_menu.add_command(label="Reset (Mark as Empty)",
                                      command=lambda: self._mark_cell_as_empty(coords))
         context_menu.post(event.x_root, event.y_root)
 
@@ -653,8 +653,8 @@ class ChemTensorApp(ctk.CTk):
 
         if hasattr(self, 'pls_target_menu'):
             self.pls_target_map.clear()
-            self.pls_target_menu.configure(values=["Brak wyników (uruchom MCR lub PARAFAC)"])
-            self.pls_target_var.set("Brak wyników (uruchom MCR lub PARAFAC)")
+            self.pls_target_menu.configure(values=["No results (run MCR or PARAFAC)"])
+            self.pls_target_var.set("No results (run MCR or PARAFAC)")
         self.current_plot_mode = 'SPECTRA'
 
     def _update_cell_state(self, coords, status, text):
@@ -679,14 +679,14 @@ class ChemTensorApp(ctk.CTk):
         btn.configure(text=text, fg_color=color, border_width=0)
 
     def _mark_cell_as_missing(self, coords):
-        self._update_cell_state(coords, 'MISSING', f"{coords}\nBRAK")
+        self._update_cell_state(coords, 'MISSING', f"{coords}\nMISSING")
         if self.original_tensor_data is not None:
             self.original_tensor_data[:, coords[0], coords[1]] = np.nan
         if self.tensor_data is not None:
             self.tensor_data[:, coords[0], coords[1]] = np.nan
 
     def _mark_cell_as_empty(self, coords):
-        self._update_cell_state(coords, 'EMPTY', f"{coords}\nPusty")
+        self._update_cell_state(coords, 'EMPTY', f"{coords}\nEmpty")
         if self.original_tensor_data is not None:
             self.original_tensor_data[:, coords[0], coords[1]] = np.nan
         if self.tensor_data is not None:
@@ -696,36 +696,36 @@ class ChemTensorApp(ctk.CTk):
         if self.original_tensor_data is None: return
         self.original_tensor_data[:, coords[0], coords[1]] = 0.0
         self.tensor_data[:, coords[0], coords[1]] = 0.0
-        self._update_cell_state(coords, 'FILLED_ZERO', f"{coords}\nWypełniono (0)")
+        self._update_cell_state(coords, 'FILLED_ZERO', f"{coords}\nFilled (0)")
         self.update_plot()
 
     def _fill_cell_with_row_mean(self, coords):
         if self.original_tensor_data is None: return
         try:
             mean_spectrum = np.nanmean(self.original_tensor_data[:, coords[0], :], axis=1)
-            if np.all(np.isnan(mean_spectrum)): raise ValueError("Brak danych w wierszu")
+            if np.all(np.isnan(mean_spectrum)): raise ValueError("No data in row")
             self.original_tensor_data[:, coords[0], coords[1]] = mean_spectrum
             self.tensor_data[:, coords[0], coords[1]] = mean_spectrum
-            self._update_cell_state(coords, 'FILLED_ROW_MEAN', f"{coords}\nWypełniono (Śr. W.)")
+            self._update_cell_state(coords, 'FILLED_ROW_MEAN', f"{coords}\nFilled (Row Mean)")
             self.update_plot()
         except Exception as e:
-            messagebox.showerror("Błąd", f"Nie można obliczyć średniej dla wiersza {coords[0]}.\n{e}")
+            messagebox.showerror("Error", f"Cannot calculate mean for row {coords[0]}.\n{e}")
 
     def _fill_cell_with_col_mean(self, coords):
         if self.original_tensor_data is None: return
         try:
             mean_spectrum = np.nanmean(self.original_tensor_data[:, :, coords[1]], axis=1)
-            if np.all(np.isnan(mean_spectrum)): raise ValueError("Brak danych w kolumnie")
+            if np.all(np.isnan(mean_spectrum)): raise ValueError("No data in column")
             self.original_tensor_data[:, coords[0], coords[1]] = mean_spectrum
             self.tensor_data[:, coords[0], coords[1]] = mean_spectrum
-            self._update_cell_state(coords, 'FILLED_COL_MEAN', f"{coords}\nWypełniono (Śr. K.)")
+            self._update_cell_state(coords, 'FILLED_COL_MEAN', f"{coords}\nFilled (Col Mean)")
             self.update_plot()
         except Exception as e:
-            messagebox.showerror("Błąd", f"Nie można obliczyć średniej dla kolumny {coords[1]}.\n{e}")
+            messagebox.showerror("Error", f"Cannot calculate mean for column {coords[1]}.\n{e}")
 
     def _load_data_files(self):
-        file_paths = filedialog.askopenfilenames(title=f"Wybierz pliki CSV/DPT...",
-                                                 filetypes=[("Pliki danych", "*.csv *.dpt"), ("Pliki CSV", "*.csv"), ("Pliki DPT", "*.dpt"), ("Wszystkie pliki", "*.*")])
+        file_paths = filedialog.askopenfilenames(title=f"Select CSV/DPT files...",
+                                                 filetypes=[("Data files", "*.csv *.dpt"), ("CSV files", "*.csv"), ("DPT files", "*.dpt"), ("All files", "*.*")])
         if not file_paths:
             return
 
@@ -742,7 +742,7 @@ class ChemTensorApp(ctk.CTk):
                     is_first_file = False
                 
                 if self.original_wavenumbers is not None and not np.array_equal(self.original_wavenumbers, current_wavenumbers):
-                     messagebox.showwarning("Ostrzeżenie", f"Plik {file_name} ma inną oś X (wavenumbers) i został pominięty.")
+                     messagebox.showwarning("Warning", f"File {file_name} has a different X axis (wavenumbers) and was skipped.")
                      continue
 
                 self.loaded_files.append({
@@ -752,7 +752,7 @@ class ChemTensorApp(ctk.CTk):
                     'active': True
                 })
             except Exception as e:
-                messagebox.showerror("Błąd", f"Nie udało się wczytać pliku {file_name}:\n{e}")
+                messagebox.showerror("Error", f"Failed to load file {file_name}:\n{e}")
         
         self._refresh_file_list_ui()
         self._update_flat_data()
@@ -831,13 +831,14 @@ class ChemTensorApp(ctk.CTk):
 
     def _clear_file_list(self):
         if not self.loaded_files: return
-        if messagebox.askyesno("Potwierdzenie", "Czy na pewno chcesz usunąć wszystkie pliki z listy?"):
-            self.loaded_files.clear()
-            self.original_wavenumbers = None
-            self.flat_tensor_data = None
-            self._refresh_file_list_ui()
-            self._update_flat_data()
-            self.update_plot()
+        if not messagebox.askyesno("Confirmation", "Are you sure you want to remove all files from the list?"):
+            return
+        self.loaded_files = []
+        self.original_wavenumbers = None
+        self.flat_tensor_data = None
+        self._refresh_file_list_ui()
+        self._update_flat_data()
+        self.update_plot()
         self.focus_set()
 
     def _update_flat_data(self):
@@ -857,18 +858,19 @@ class ChemTensorApp(ctk.CTk):
     def _auto_fill_grid_from_list(self):
         active_files = [f for f in self.loaded_files if f['active']]
         if not active_files:
-            messagebox.showinfo("Info", "Brak aktywnych plików na liście.")
+            messagebox.showwarning("Warning", "No active files in the list.")
             return
         
         try:
             n = int(self.n_var.get())
             m = int(self.m_var.get())
+            if n <= 0 or m <= 0: raise ValueError
         except ValueError:
-            messagebox.showerror("Błąd", "Nieprawidłowe wymiary N lub M.")
+            messagebox.showerror("Error", "Invalid N or M dimensions.")
             return
 
         if len(active_files) > n * m:
-            if not messagebox.askyesno("Ostrzeżenie", f"Masz {len(active_files)} plików, a siatka mieści tylko {n*m}. Nadmiarowe pliki zostaną pominięte. Kontynuować?"):
+            if not messagebox.askyesno("Warning", f"You have {len(active_files)} files, but the grid fits only {n*m}. Excess files will be skipped. Continue?"):
                 return
         
         # Preserve wavenumbers because _create_field_matrix clears them
@@ -889,7 +891,7 @@ class ChemTensorApp(ctk.CTk):
             if self.original_tensor_data is None:
                  if self.original_wavenumbers is None:
                       # Should not happen if saved_wavenumbers was valid, but safety check
-                      messagebox.showerror("Błąd", "Brak danych osi X (wavenumbers).")
+                      messagebox.showerror("Error", "Missing X axis data (wavenumbers).")
                       return
                  self.original_tensor_data = np.full((len(self.original_wavenumbers), n, m), np.nan)
             
@@ -900,14 +902,14 @@ class ChemTensorApp(ctk.CTk):
         
         # Update tensor_data copy
         self.tensor_data = self.original_tensor_data.copy() if self.original_tensor_data is not None else None
-        messagebox.showinfo("Sukces", "Siatka została wypełniona plikami z listy.")
+        messagebox.showinfo("Success", "Grid filled with files from the list.")
         self._reset_wavenumber_range()
         self.update_plot()
         self.focus_set()
 
     def _select_all_active(self):
-        """Zaznacza wszystkie komórki, które mają status LOADED lub FILLED."""
-        print("Zaznaczanie wszystkich aktywnych komórek...")
+        """Selects all cells with status LOADED or FILLED."""
+        print("Selecting all active cells...")
         for coords, status in self.field_matrix_status.items():
             if status.startswith('LOADED') or status.startswith('FILLED'):
                 if coords not in self.selected_coords:
@@ -918,12 +920,12 @@ class ChemTensorApp(ctk.CTk):
         self.update_plot()
 
     def _deselect_all(self):
-        """Odznacza wszystkie zaznaczone komórki."""
+        """Deselects all selected cells."""
         if not self.selected_coords:
-            return  # Nic do zrobienia
+            return  # Nothing to do
 
-        print("Odznaczanie wszystkich komórek...")
-        # Musimy zrobić kopię, ponieważ będziemy modyfikować zbiór
+        print("Deselecting all cells...")
+        # We must make a copy because we will modify the set
         coords_to_clear = list(self.selected_coords)
         self.selected_coords.clear()
 
@@ -934,29 +936,34 @@ class ChemTensorApp(ctk.CTk):
         self.update_plot()
 
     def _apply_wavenumber_range(self):
-        if self.original_tensor_data is None:
-            messagebox.showerror("Błąd", "Najpierw wczytaj dane.")
+        if self.original_wavenumbers is None:
+            messagebox.showwarning("Warning", "Load data first.")
             return
         try:
             min_val = float(self.range_min_var.get())
             max_val = float(self.range_max_var.get())
         except ValueError:
-            messagebox.showerror("Błąd", "Wartości Min i Max muszą być liczbami.")
+            messagebox.showerror("Error", "Min and Max values must be numbers.")
             return
         if min_val >= max_val:
-            messagebox.showerror("Błąd", "Min musi być mniejszy niż Max.")
+            messagebox.showerror("Error", "Min must be smaller than Max.")
             return
 
-        mask = np.where((self.original_wavenumbers >= min_val) & (self.original_wavenumbers <= max_val))[0]
+        mask_indices = np.where((self.original_wavenumbers >= min_val) & (self.original_wavenumbers <= max_val))[0]
 
-        if len(mask) == 0:
-            messagebox.showerror("Błąd", "Brak punktów danych w podanym zakresie.")
+        if len(mask_indices) == 0:
+            messagebox.showwarning("Warning", "No data points in the given range.")
             return
 
-        self.wavenumbers = self.original_wavenumbers[mask]
-        self.tensor_data = self.original_tensor_data[mask, :, :]
+        self.wavenumbers = self.original_wavenumbers[mask_indices]
+        if self.original_tensor_data is not None:
+            self.tensor_data = self.original_tensor_data[mask_indices, :, :]
+        
+        # Update flat data as well
+        if self.flat_tensor_data is not None:
+            self.flat_tensor_data = self.flat_tensor_data[mask_indices, :]
 
-        print(f"Zakres ograniczony do {len(self.wavenumbers)} punktów ({min_val} - {max_val}).")
+        print(f"Range limited to {len(self.wavenumbers)} points ({min_val} - {max_val}).")
 
         self._invalidate_preprocessing()
         self._invalidate_analysis()
@@ -971,6 +978,8 @@ class ChemTensorApp(ctk.CTk):
         self.wavenumbers = np.copy(self.original_wavenumbers)
         if self.original_tensor_data is not None:
             self.tensor_data = np.copy(self.original_tensor_data)
+        if self.flat_tensor_data is not None and self.loaded_files:
+            self._update_flat_data() # Re-stack from original data if files are loaded
 
         if self.wavenumbers is not None:
             self.range_min_var.set(f"{np.min(self.wavenumbers):.2f}")
@@ -979,7 +988,7 @@ class ChemTensorApp(ctk.CTk):
             self.range_min_var.set("")
             self.range_max_var.set("")
 
-        print("Zakres zresetowany do pełnego zakresu.")
+        print("Range reset to full range.")
 
         self._invalidate_preprocessing()
         self._invalidate_analysis()
@@ -989,25 +998,21 @@ class ChemTensorApp(ctk.CTk):
 
     def _get_data_source(self):
         if self.pipeline_mode_var.get() and self.preprocessed_tensor is not None:
-            print("Pobieranie danych: Źródło = Dane Przetworzone")
+            print("Fetching data: Source = Preprocessed Data")
             return self.preprocessed_tensor
         elif self.tensor_data is not None:
-            print("Pobieranie danych: Źródło = Dane Robocze (Siatka)")
+            print("Fetching data: Source = Working Data (Grid)")
             return self.tensor_data
         elif self.flat_tensor_data is not None:
-            print("Pobieranie danych: Źródło = Dane Robocze (Lista)")
-            # Wrap flat data into a mock 3D structure (1, K, W) or handle directly
-            # Currently preprocessing expects 3D (1, N, M) or (W, N, M) depending on usage
-            # But our tensor_data is (W, N, M).
-            # flat_tensor_data is (W, K).
+            print("Fetching data: Source = Working Data (List)")
             # We can reshape it to (W, K, 1) to reuse the same logic
             w, k = self.flat_tensor_data.shape
             return self.flat_tensor_data.reshape(w, k, 1)
         else:
-            messagebox.showerror("Błąd", "Brak danych. Wczytaj najpierw pliki.")
+            messagebox.showerror("Error", "No data. Load files first.")
             return None
 
-    def _process_data(self, processing_function, name="Przetwarzanie"):
+    def _process_data(self, processing_function, name="Processing"):
         data_source = self._get_data_source()
         if data_source is None:
             return
@@ -1020,9 +1025,9 @@ class ChemTensorApp(ctk.CTk):
 
             self.show_preprocessed_var.set(True)
             self.update_plot()
-            messagebox.showinfo("Sukces", f"Operacja '{name}' została pomyślnie zastosowana.")
+            messagebox.showinfo("Success", f"Operation '{name}' applied successfully.")
         except Exception as e:
-            messagebox.showerror(f"Błąd {name}", f"Wystąpił błąd:\n{e}")
+            messagebox.showerror(f"Error {name}", f"An error occurred:\n{e}")
             self._invalidate_preprocessing()
 
     def _als_baseline(self, y, lam, p, n_iter=10):
@@ -1044,14 +1049,14 @@ class ChemTensorApp(ctk.CTk):
         try:
             lam = float(self.als_lambda_var.get())
             p = float(self.als_p_var.get())
-            if not (0 < p < 1): raise ValueError("P (asymetria) musi być między 0 a 1.")
-            if lam <= 0: raise ValueError("Lambda (gładkość) musi być dodatnia.")
+            if not (0 < p < 1): raise ValueError("P (asymmetry) must be between 0 and 1.")
+            if lam <= 0: raise ValueError("Lambda (smoothness) must be positive.")
         except ValueError as e:
-            messagebox.showerror("Błąd Walidacji", f"Błędne parametry ALS: {e}")
+            messagebox.showerror("Validation Error", f"Invalid ALS parameters: {e}")
             return
 
         def als_logic(tensor):
-            print(f"Stosowanie korekcji ALS (lambda={lam}, p={p})...")
+            print(f"Applying ALS correction (lambda={lam}, p={p})...")
             # tensor shape: (W, N, M) or (W, K, 1)
             w, n, m = tensor.shape
             for r in range(n):
@@ -1061,21 +1066,21 @@ class ChemTensorApp(ctk.CTk):
                         baseline = self._als_baseline(spectrum, lam, p)
                         tensor[:, r, c] = spectrum - baseline
 
-        self._process_data(als_logic, name="Korekcja ALS")
+        self._process_data(als_logic, name="ALS Correction")
         self.focus_set()
 
     def _apply_sg_filter(self):
         try:
             window = int(self.sg_window_var.get())
             poly = int(self.sg_poly_var.get())
-            if window % 2 == 0 or window <= 0: raise ValueError("Szerokość okna musi być nieparzysta i dodatnia")
-            if poly >= window: raise ValueError("Stopień wielomianu musi być mniejszy niż okno")
+            if window % 2 == 0 or window <= 0: raise ValueError("Window width must be odd and positive")
+            if poly >= window: raise ValueError("Polynomial degree must be smaller than window")
         except ValueError as e:
-            messagebox.showerror("Błąd Walidacji", f"{e}")
+            messagebox.showerror("Validation Error", f"{e}")
             return
 
         def sg_logic(tensor):
-            print(f"Stosowanie filtru SG (okno={window}, wielomian={poly}, deriv=2)...")
+            print(f"Applying SG filter (window={window}, poly={poly}, deriv=2)...")
             w, n, m = tensor.shape
             for r in range(n):
                 for c in range(m):
@@ -1087,7 +1092,7 @@ class ChemTensorApp(ctk.CTk):
 
     def _apply_snv(self):
         def snv_logic(tensor):
-            print("Stosowanie SNV...")
+            print("Applying SNV...")
             w, n, m = tensor.shape
             for r in range(n):
                 for c in range(m):
@@ -1105,7 +1110,7 @@ class ChemTensorApp(ctk.CTk):
 
     def _apply_min_max(self):
         def min_max_logic(tensor):
-            print("Stosowanie Skalowania Min-Max...")
+            print("Applying Min-Max Scaling...")
             w, n, m = tensor.shape
             for r in range(n):
                 for c in range(m):
@@ -1123,7 +1128,7 @@ class ChemTensorApp(ctk.CTk):
 
     def _apply_l1_norm(self):
         def l1_logic(tensor):
-            print("Stosowanie Normy L1 (Pole Powierzchni)...")
+            print("Applying L1 Norm (Area)...")
             w, n, m = tensor.shape
             for r in range(n):
                 for c in range(m):
@@ -1133,12 +1138,12 @@ class ChemTensorApp(ctk.CTk):
                         if area > 1e-8:
                             tensor[:, r, c] = spectrum / area
 
-        self._process_data(l1_logic, name="Norma (Pole Powierzchni)")
+        self._process_data(l1_logic, name="Norm (Area)")
         self.focus_set()
 
     def _apply_msc(self):
         def msc_logic(tensor):
-            print("Stosowanie MSC...")
+            print("Applying MSC...")
             w, n, m = tensor.shape
             all_spectra = []
             for r in range(n):
@@ -1146,7 +1151,7 @@ class ChemTensorApp(ctk.CTk):
                     if not np.isnan(tensor[0, r, c]):
                         all_spectra.append(tensor[:, r, c])
             if not all_spectra:
-                raise ValueError("Brak danych do obliczenia widma referencyjnego.")
+                raise ValueError("No data to calculate reference spectrum.")
 
             mean_spectrum = np.mean(np.array(all_spectra), axis=0).reshape(-1, 1)
             model = LinearRegression()
@@ -1194,7 +1199,7 @@ class ChemTensorApp(ctk.CTk):
                     rc_sub_to_index_map[(r_idx_sub, c_idx_sub)] = i
 
             if len(data_matrix) < 2:
-                messagebox.showerror("Błąd", "Zbyt mało ważnych próbek (min. 2).")
+                messagebox.showerror("Error", "Too few valid samples (min. 2).")
                 return None, None, None
 
             map_info = {
@@ -1229,19 +1234,19 @@ class ChemTensorApp(ctk.CTk):
                 data_matrix = self.flat_tensor_data.T if self.flat_tensor_data is not None else None
             
             if data_matrix is None:
-                messagebox.showerror("Błąd", "Brak danych na liście.")
+                messagebox.showerror("Error", "No data in the list.")
                 return None, None, None
 
             sample_labels = [f['name'] for f in active_files]
             
             if len(data_matrix) < 2:
-                 messagebox.showerror("Błąd", "Zbyt mało aktywnych plików (min. 2).")
+                 messagebox.showerror("Error", "Too few active files (min. 2).")
                  return None, None, None
 
             map_info = {"type": "list"}
             return data_matrix, sample_labels, map_info
 
-        messagebox.showerror("Błąd", "Brak zaznaczonych danych (na siatce lub liście).")
+        messagebox.showerror("Error", "No data selected (on grid or list).")
         return None, None, None
 
     def _run_pca(self):
@@ -1253,7 +1258,7 @@ class ChemTensorApp(ctk.CTk):
             if n_components < 2: n_components = 2
             if n_components > X.shape[0]: n_components = X.shape[0]
         except ValueError:
-            messagebox.showerror("Błąd", "Liczba komponentów musi być liczbą całkowitą.")
+            messagebox.showerror("Error", "Number of components must be an integer.")
             return
         try:
             scaler = StandardScaler()
@@ -1264,28 +1269,28 @@ class ChemTensorApp(ctk.CTk):
             self.pca_results = {
                 'scores': scores, 'loadings': pca.components_.T,
                 'variance': pca.explained_variance_ratio_, 'labels': labels,
-                'pca_model': pca, 'scaler': scaler, 'X_original': X
+                'pca_model': pca, 'scaler': scaler, 'X_original': X,
+                'n_components': n_components
             }
             self.current_plot_mode = 'PCA'
             self.update_plot()
-            messagebox.showinfo("Sukces", "Analiza PCA zakończona.")
+            messagebox.showinfo("Success", "PCA analysis completed.")
             self.focus_set()
         except Exception as e:
-            messagebox.showerror("Błąd PCA", f"Wystąpił błąd podczas analizy PCA:\n{e}")
+            messagebox.showerror("PCA Error", f"An error occurred during PCA analysis:\n{e}")
             self.pca_results = None
 
     def _run_reconstruction(self):
         if self.pca_results is None:
-            messagebox.showerror("Błąd", "Najpierw uruchom analizę PCA.")
+            messagebox.showwarning("Warning", "Run PCA analysis first.")
             return
         try:
             k = int(self.pca_recon_components_var.get())
-            max_k = self.pca_results['scores'].shape[1]
-            if not (0 < k <= max_k):
-                messagebox.showerror("Błąd Walidacji", f"Liczba składowych musi być liczbą od 1 do {max_k}.")
-                return
-        except ValueError:
-            messagebox.showerror("Błąd", "Liczba składowych musi być liczbą całkowitą.")
+            max_k = self.pca_results['n_components']
+            if not (1 <= k <= max_k):
+                raise ValueError(f"Number of components must be between 1 and {max_k}.")
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
             return
         try:
             scores = self.pca_results['scores'];
@@ -1302,10 +1307,10 @@ class ChemTensorApp(ctk.CTk):
             self.pca_results['residuals'] = residuals
             self.current_plot_mode = 'RECONSTRUCTION'
             self.update_plot()
-            messagebox.showinfo("Sukces", f"Dane odtworzone przy użyciu {k} składowych.")
+            messagebox.showinfo("Success", f"Data reconstructed using {k} components.")
             self.focus_set()
         except Exception as e:
-            messagebox.showerror("Błąd Rekonstrukcji", f"Wystąpił błąd:\n{e}")
+            messagebox.showerror("Reconstruction Error", f"An error occurred:\n{e}")
 
     def _update_pls_target_options(self):
         self.pls_target_map.clear()
@@ -1314,7 +1319,7 @@ class ChemTensorApp(ctk.CTk):
         if self.mcr_results:
             k = self.mcr_results['rank']
             for i in range(k):
-                name = f"MCR Stężenie Skł. {i + 1}"
+                name = f"MCR Concentration Comp. {i + 1}"
                 self.pls_target_map[name] = self.mcr_results['C'][:, i]
                 options.append(name)
 
@@ -1322,68 +1327,68 @@ class ChemTensorApp(ctk.CTk):
             k = self.parafac_results['factors'][0].shape[1]
             factors = self.parafac_results['factors']
             for i in range(k):
-                name_n = f"PARAFAC Trend N Skł. {i + 1}"
+                name_n = f"PARAFAC Trend N Comp. {i + 1}"
                 trend_n = np.repeat(factors[1][:, i], self.m_cols)
                 self.pls_target_map[name_n] = trend_n
                 options.append(name_n)
 
-                name_m = f"PARAFAC Trend M Skł. {i + 1}"
+                name_m = f"PARAFAC Trend M Comp. {i + 1}"
                 trend_m = np.tile(factors[2][:, i], self.n_rows)
                 self.pls_target_map[name_m] = trend_m
                 options.append(name_m)
 
         if not options:
-            options = ["Brak wyników (uruchom MCR lub PARAFAC)"]
+            options = ["No results (run MCR or PARAFAC)"]
 
         self.pls_target_menu.configure(values=options)
         self.pls_target_var.set(options[0])
 
     def _run_parafac(self):
         if self.tensor_data is None:
-            messagebox.showerror("Błąd", "Brak danych w siatce (Tensorze). PARAFAC wymaga danych 3D.\nUżyj 'Auto-rozmieść z Listy' w zakładce Dane.")
+            messagebox.showwarning("Warning", "No data in grid (Tensor). PARAFAC requires 3D data.\nUse 'Auto-arrange from List' in Data tab.")
             return
         data_source = self.preprocessed_tensor if self.show_preprocessed_var.get() and self.preprocessed_tensor is not None else self.tensor_data
         if data_source is None:
-            messagebox.showerror("Błąd", "Brak danych do analizy PARAFAC.")
+            messagebox.showerror("Error", "No data for PARAFAC analysis.")
             return
         try:
             rank = int(self.parafac_rank_var.get())
-            if rank <= 0: raise ValueError("Ranga musi być dodatnia")
+            if rank <= 0: raise ValueError("Rank must be positive")
         except ValueError as e:
-            messagebox.showerror("Błąd Walidacji", f"Niepoprawna liczba składowych: {e}")
+            messagebox.showerror("Validation Error", f"Invalid number of components: {e}")
             return
         try:
             tensor_no_nan = np.nan_to_num(data_source, nan=0.0)
             non_negative = self.parafac_non_negative_var.get()
 
             if non_negative:
-                print(f"Uruchamianie NN-PARAFAC z rangą {rank}...")
+                print(f"Running NN-PARAFAC with rank {rank}...")
                 weights, factors = tl.decomposition.non_negative_parafac(tensor_no_nan, rank=rank, init='random',
                                                                          n_iter_max=100)
-                msg = "Analiza NN-PARAFAC zakończona."
+                msg = "NN-PARAFAC analysis completed."
             else:
-                print(f"Uruchamianie PARAFAC z rangą {rank}...")
+                print(f"Running PARAFAC with rank {rank}...")
                 weights, factors = tl.decomposition.parafac(tensor_no_nan, rank=rank, n_iter_max=100)
-                msg = "Analiza PARAFAC zakończona."
+                msg = "PARAFAC analysis completed."
 
             self.parafac_results = {'weights': weights, 'factors': factors}
             self.current_plot_mode = 'PARAFAC'
             self._update_pls_target_options()
             self.update_plot()
-            messagebox.showinfo("Sukces", msg)
+            messagebox.showinfo("Success", msg)
             self.focus_set()
         except Exception as e:
-            messagebox.showerror("Błąd PARAFAC", f"Wystąpił błąd podczas analizy PARAFAC:\n{e}")
+            messagebox.showerror("PARAFAC Error", f"An error occurred during PARAFAC analysis:\n{e}")
             self.parafac_results = None
 
     def _load_mcr_st_init(self):
         if self.wavenumbers is None:
-            messagebox.showerror("Błąd", "Najpierw wczytaj dane (i ustaw zakres), aby zdefiniować oś liczb falowych.")
+            messagebox.showerror("Error", "Load data (and set range) first to define wavenumber axis.")
             return
 
         file_paths = filedialog.askopenfilenames(
-            title="Wybierz plik(i) ze znanymi widmami...",
-            filetypes=[("Pliki CSV", "*.csv"), ("Wszystkie pliki", "*.*")]
+            title="Select file(s) with known spectra...",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
         )
         if not file_paths:
             return
@@ -1395,16 +1400,16 @@ class ChemTensorApp(ctk.CTk):
                 current_wavenumbers, current_absorbance = data[:, 0], data[:, 1]
 
                 if not np.array_equal(self.wavenumbers, current_wavenumbers):
-                    messagebox.showerror("Błąd Osi X", f"Oś liczb falowych w pliku {file_path.split('/')[-1]} "
-                                                       f"nie jest identyczna z aktywnym zakresem danych w aplikacji.")
+                    messagebox.showerror("X Axis Error", f"Wavenumber axis in file {file_path.split('/')[-1]} "
+                                                       f"is not identical to the active data range in the application.")
                     self.mcr_st_init = None
                     return
 
                 loaded_spectra.append(current_absorbance)
 
             except Exception as e:
-                messagebox.showerror("Błąd Odczytu Pliku",
-                                     f"Nie udało się wczytać pliku {file_path.split('/')[-1]}.\n{e}")
+                messagebox.showerror("File Read Error",
+                                     f"Failed to load file {file_path.split('/')[-1]}.\n{e}")
                 self.mcr_st_init = None
                 return
 
@@ -1413,8 +1418,8 @@ class ChemTensorApp(ctk.CTk):
         suggested_indices = ",".join(map(str, range(len(file_paths))))
         self.mcr_st_fix_var.set(suggested_indices)
 
-        messagebox.showinfo("Sukces", f"Pomyślnie wczytano {len(file_paths)} znanych widm.\n"
-                                      f"Wprowadź indeksy do zamrożenia (np. {suggested_indices})")
+        messagebox.showinfo("Success", f"Successfully loaded {len(file_paths)} known spectra.\n"
+                                      f"Enter indices to freeze (e.g. {suggested_indices})")
         self.focus_set()
 
     def _run_mcr_als(self):
@@ -1436,17 +1441,17 @@ class ChemTensorApp(ctk.CTk):
              is_grid_data = False
         
         if D_matrix is None:
-            messagebox.showerror("Błąd", "Brak danych do analizy MCR-ALS.")
+            messagebox.showerror("Error", "No data for MCR-ALS analysis.")
             return
 
         try:
             rank = int(self.mcr_n_components_var.get())
-            if rank <= 0: raise ValueError("Liczba składowych musi być dodatnia")
+            if rank <= 0: raise ValueError("Number of components must be positive")
             
             max_iter = int(self.mcr_max_iter_var.get())
             if max_iter <= 0: max_iter = 100
         except ValueError as e:
-            messagebox.showerror("Błąd Walidacji", f"Niepoprawne parametry: {e}")
+            messagebox.showerror("Validation Error", f"Invalid parameters: {e}")
             return
         try:
             n_samples, n_features = D_matrix.shape
@@ -1455,15 +1460,15 @@ class ChemTensorApp(ctk.CTk):
             st_constraints = []
 
             if self.mcr_non_negative_var.get():
-                print("Uruchamianie MCR-ALS z regresorem NNLS (stężenia i widma nieujemne)...")
+                print("Running MCR-ALS with NNLS regressor (concentrations and spectra non-negative)...")
                 c_regr = NNLS()
                 st_regr = NNLS()
 
                 if self.mcr_norm_var.get():
-                    print("Dodawanie ograniczenia: Suma stężeń = 1")
+                    print("Adding constraint: Concentration sum = 1")
                     c_constraints.append(ConstraintNorm())
             else:
-                print("Uruchamianie MCR-ALS z regresorem OLS (stężenia i widma mogą być ujemne)...")
+                print("Running MCR-ALS with OLS regressor (concentrations and spectra can be negative)...")
                 c_regr = OLS()
                 st_regr = OLS()
 
@@ -1475,30 +1480,30 @@ class ChemTensorApp(ctk.CTk):
                 try:
                     st_fix_indices = [int(i.strip()) for i in st_fix_str.split(',')]
                 except ValueError:
-                    messagebox.showerror("Błąd Walidacji",
-                                         "Indeksy do zamrożenia muszą być listą liczb oddzielonych przecinkami (np. 0 lub 0,2).")
+                    messagebox.showerror("Validation Error",
+                                         "Indices to freeze must be a comma-separated list of numbers (e.g., 0 or 0,2).")
                     return
 
             if self.mcr_st_init is not None:
                 if len(st_fix_indices) != self.mcr_st_init.shape[0]:
-                    messagebox.showerror("Błąd Walidacji",
-                                         f"Wczytałeś {self.mcr_st_init.shape[0]} widm, ale podałeś {len(st_fix_indices)} indeksów do zamrożenia.\nLiczba ta musi być identyczna.")
+                    messagebox.showerror("Validation Error",
+                                         f"You loaded {self.mcr_st_init.shape[0]} spectra, but provided {len(st_fix_indices)} indices to freeze.\nThis number must be identical.")
                     return
 
-                print(f"Używanie {len(st_fix_indices)} znanych widm jako ST_init...")
+                print(f"Using {len(st_fix_indices)} known spectra as ST_init...")
                 st_init = np.random.rand(rank, n_features)
 
                 for i, fix_idx in enumerate(st_fix_indices):
                     if fix_idx >= rank:
-                        messagebox.showerror("Błąd Walidacji",
-                                             f"Indeks {fix_idx} jest poza zakresem. Ranga to {rank}, więc maks. indeks to {rank - 1}.")
+                        messagebox.showerror("Validation Error",
+                                             f"Index {fix_idx} is out of range. Rank is {rank}, so max index is {rank - 1}.")
                         return
                     st_init[fix_idx, :] = self.mcr_st_init[i, :]
 
             else:
                 if st_fix_indices:
-                    messagebox.showerror("Błąd Walidacji",
-                                         "Podałeś indeksy do zamrożenia, ale nie wczytałeś żadnych znanych widm (użyj przycisku 'Załaduj Znane Widmo').")
+                    messagebox.showerror("Validation Error",
+                                         "You provided indices to freeze, but did not load any known spectra (use the 'Load Known Spectrum' button).")
                     return
                 st_init = np.random.rand(rank, n_features)
 
@@ -1520,38 +1525,38 @@ class ChemTensorApp(ctk.CTk):
             self.current_plot_mode = 'MCR'
             self._update_pls_target_options()
             self.update_plot()
-            messagebox.showinfo("Sukces", "Analiza MCR-ALS zakończona.")
+            messagebox.showinfo("Success", "MCR-ALS analysis completed.")
             self.focus_set()
 
         except ImportError:
-            messagebox.showerror("Błąd Importu",
-                                 "Nie znaleziono biblioteki 'pymcr'.\nUpewnij się, że jest zainstalowana: pip install pymcr")
+            messagebox.showerror("Import Error",
+                                 "Library 'pymcr' not found.\nMake sure it is installed: pip install pymcr")
         except Exception as e:
-            messagebox.showerror("Błąd MCR-ALS", f"Wystąpił błąd podczas analizy MCR-ALS:\n{e}")
+            messagebox.showerror("MCR-ALS Error", f"An error occurred during MCR-ALS analysis:\n{e}")
             self.mcr_results = None
 
     def _get_source_tensor_for_recon(self):
         data_source = self.preprocessed_tensor if self.show_preprocessed_var.get() and self.preprocessed_tensor is not None else self.tensor_data
         if data_source is None:
-            messagebox.showerror("Błąd", "Brak danych źródłowych.")
+            messagebox.showerror("Error", "No source data.")
             return None
         return np.nan_to_num(data_source, nan=0.0)
 
     def _run_parafac_recon(self):
         if self.parafac_results is None:
-            messagebox.showerror("Błąd", "Najpierw uruchom analizę PARAFAC.")
+            messagebox.showerror("Error", "Run PARAFAC analysis first.")
             return
         try:
             k = int(self.tensor_recon_components_var.get())
             max_k = self.parafac_results['factors'][0].shape[1]
             if not (0 < k <= max_k):
-                messagebox.showerror("Błąd Walidacji", f"Liczba składowych musi być liczbą od 1 do {max_k}.")
+                messagebox.showerror("Validation Error", f"Number of components must be between 1 and {max_k}.")
                 return
         except ValueError:
-            messagebox.showerror("Błąd", "Liczba składowych musi być liczbą całkowitą.")
+            messagebox.showerror("Error", "Number of components must be an integer.")
             return
         try:
-            print(f"Rekonstrukcja z {k} składowych PARAFAC...")
+            print(f"Reconstruction with {k} PARAFAC components...")
             weights = self.parafac_results['weights'][:k]
             factors = [f[:, :k] for f in self.parafac_results['factors']]
             reconstructed_tensor = tl.cp_to_tensor((weights, factors))
@@ -1568,29 +1573,29 @@ class ChemTensorApp(ctk.CTk):
             }
             self.current_plot_mode = 'TENSOR_RECONSTRUCTION'
             self.update_plot()
-            messagebox.showinfo("Sukces", f"Tensor odtworzony z {k} składowych PARAFAC.")
+            messagebox.showinfo("Success", f"Tensor reconstructed with {k} PARAFAC components.")
             self.focus_set()
         except Exception as e:
-            messagebox.showerror("Błąd Rekonstrukcji PARAFAC", f"Wystąpił błąd:\n{e}")
+            messagebox.showerror("PARAFAC Reconstruction Error", f"An error occurred:\n{e}")
 
     def _run_mcr_recon(self):
         if self.mcr_results is None:
-            messagebox.showerror("Błąd", "Najpierw uruchom analizę MCR-ALS.")
+            messagebox.showerror("Error", "Run MCR-ALS analysis first.")
             return
         if not self.mcr_results['is_grid_data']:
-            messagebox.showerror("Błąd", "Rekonstrukcja tensora MCR jest dostępna tylko dla danych z siatki (3D).")
+            messagebox.showerror("Error", "MCR tensor reconstruction is only available for grid data (3D).")
             return
         try:
             k = int(self.tensor_recon_components_var.get())
             max_k = self.mcr_results['rank']
             if not (0 < k <= max_k):
-                messagebox.showerror("Błąd Walidacji", f"Liczba składowych musi być liczbą od 1 do {max_k}.")
+                messagebox.showerror("Validation Error", f"Number of components must be between 1 and {max_k}.")
                 return
         except ValueError:
-            messagebox.showerror("Błąd", "Liczba składowych musi być liczbą całkowitą.")
+            messagebox.showerror("Error", "Number of components must be an integer.")
             return
         try:
-            print(f"Rekonstrukcja z {k} składowych MCR...")
+            print(f"Reconstruction with {k} MCR components...")
             C_k = self.mcr_results['C'][:, :k]  # (n*m, k)
             ST_k = self.mcr_results['ST'][:, :k]  # (w, k)
             D_recon_k = C_k @ ST_k.T  # (n*m, w)
@@ -1611,15 +1616,15 @@ class ChemTensorApp(ctk.CTk):
             }
             self.current_plot_mode = 'TENSOR_RECONSTRUCTION'
             self.update_plot()
-            messagebox.showinfo("Sukces", f"Tensor odtworzony z {k} składowych MCR.")
+            messagebox.showinfo("Success", f"Tensor reconstructed with {k} MCR components.")
             self.focus_set()
         except Exception as e:
-            messagebox.showerror("Błąd Rekonstrukcji MCR", f"Wystąpił błąd:\n{e}")
+            messagebox.showerror("MCR Reconstruction Error", f"An error occurred:\n{e}")
 
     def _calculate_2dcos(self, D):
         n_features, n_samples = D.shape
         if n_samples < 2:
-            raise ValueError("2D-COS wymaga co najmniej 2 próbek (punktów perturbacji).")
+            raise ValueError("2D-COS requires at least 2 samples (perturbation points).")
 
         mean_spec = D.mean(axis=1, keepdims=True)
         Y = D - mean_spec
@@ -1651,13 +1656,13 @@ class ChemTensorApp(ctk.CTk):
             phi_list = []
             psi_list = []
 
-            if axis_choice == "Analizuj Wiersze (N)":
-                print(f"Uruchamianie 3D-COS (Modulator: Wiersze N={n}, Perturbacja: Kolumny M={m})...")
+            if axis_choice == "Analyze Rows (N)":
+                print(f"Running 3D-COS (Modulator: Rows N={n}, Perturbation: Columns M={m})...")
                 modulator_size = n
                 if m < 2: 
                      # If we have list data reshaped as (W, K, 1), M=1.
                      # Row analysis requires M >= 2 (perturbation axis).
-                     messagebox.showerror("Błąd", "Analiza wierszy wymaga co najmniej 2 kolumn (M >= 2).")
+                     messagebox.showerror("Error", "Row analysis requires at least 2 columns (M >= 2).")
                      return
 
                 for i in range(n):
@@ -1666,11 +1671,11 @@ class ChemTensorApp(ctk.CTk):
                     phi_list.append(phi)
                     psi_list.append(psi)
 
-            else:  # "Analizuj Kolumny (M)"
-                print(f"Uruchamianie 3D-COS (Modulator: Kolumny M={m}, Perturbacja: Wiersze N={n})...")
+            else:  # "Analyze Columns (M)"
+                print(f"Running 3D-COS (Modulator: Columns M={m}, Perturbation: Rows N={n})...")
                 modulator_size = m
                 if n < 2: 
-                    messagebox.showerror("Błąd", "Analiza kolumn wymaga co najmniej 2 wierszy (N >= 2).")
+                    messagebox.showerror("Error", "Column analysis requires at least 2 rows (N >= 2).")
                     return
 
                 for j in range(m):
@@ -1696,11 +1701,11 @@ class ChemTensorApp(ctk.CTk):
 
             self.current_plot_mode = '3DCOS_SLICER'
             self.update_plot()
-            messagebox.showinfo("Sukces", "Analiza 3D-COS zakończona.\nUżyj suwaka, aby przeglądać plastry.")
+            messagebox.showinfo("Success", "3D-COS analysis completed.\nUse the slider to view slices.")
             self.focus_set()
 
         except Exception as e:
-            messagebox.showerror("Błąd 2D-COS", f"Wystąpił błąd podczas analizy 2D-COS:\n{e}")
+            messagebox.showerror("2D-COS Error", f"An error occurred during 2D-COS analysis:\n{e}")
             self._invalidate_analysis()
 
     def _on_cos_slider_change(self, value):
@@ -1713,25 +1718,25 @@ class ChemTensorApp(ctk.CTk):
     def _run_pls(self):
         target_name = self.pls_target_var.get()
         if target_name not in self.pls_target_map:
-            messagebox.showerror("Błąd",
-                                 "Wybierz prawidłowy cel (y) z listy.\nUruchom analizę MCR lub PARAFAC, aby wypełnić listę.")
+            messagebox.showerror("Error",
+                                 "Select a valid target (y) from the list.\nRun MCR or PARAFAC analysis to populate the list.")
             return
         y = self.pls_target_map[target_name]
 
         data_source = self.preprocessed_tensor if self.show_preprocessed_var.get() and self.preprocessed_tensor is not None else self.tensor_data
         if data_source is None:
-            messagebox.showerror("Błąd", "Brak danych (X) do analizy.")
+            messagebox.showerror("Error", "No data (X) for analysis.")
             return
 
         try:
             tensor_no_nan = np.nan_to_num(data_source, nan=0.0)
             w, n, m = tensor_no_nan.shape
-            X = tensor_no_nan.transpose(1, 2, 0).reshape((n * m), w)  # (próbki, cechy)
+            X = tensor_no_nan.transpose(1, 2, 0).reshape((n * m), w)  # (samples, features)
 
             if X.shape[0] != y.shape[0]:
-                raise ValueError(f"Niezgodność wymiarów X ({X.shape[0]}) i y ({y.shape[0]})")
+                raise ValueError(f"Dimension mismatch between X ({X.shape[0]}) and y ({y.shape[0]})")
 
-            print(f"Uruchamianie PLS (n_comp=1) dla celu: {target_name}")
+            print(f"Running PLS (n_comp=1) for target: {target_name}")
             pls = PLSRegression(n_components=1)
             pls.fit(X, y)
 
@@ -1742,20 +1747,20 @@ class ChemTensorApp(ctk.CTk):
 
             self.current_plot_mode = 'PLS_RESULTS'
             self.update_plot()
-            messagebox.showinfo("Sukces", "Analiza PLS zakończona.")
+            messagebox.showinfo("Success", "PLS analysis completed.")
             self.focus_set()
 
         except Exception as e:
-            messagebox.showerror("Błąd PLS", f"Wystąpił błąd podczas analizy PLS:\n{e}")
+            messagebox.showerror("PLS Error", f"An error occurred during PLS analysis:\n{e}")
             self.pls_results = None
 
     def _run_tucker(self):
         if self.tensor_data is None:
-            messagebox.showerror("Błąd", "Brak danych w siatce (Tensorze). Tucker wymaga danych 3D.\nUżyj 'Auto-rozmieść z Listy' w zakładce Dane.")
+            messagebox.showerror("Error", "No data in grid (Tensor). Tucker requires 3D data.\nUse 'Auto-arrange from List' in Data tab.")
             return
         data_source = self.preprocessed_tensor if self.show_preprocessed_var.get() and self.preprocessed_tensor is not None else self.tensor_data
         if data_source is None:
-            messagebox.showerror("Błąd", "Brak danych do analizy Tuckera.")
+            messagebox.showerror("Error", "No data for Tucker analysis.")
             return
 
         try:
@@ -1763,15 +1768,15 @@ class ChemTensorApp(ctk.CTk):
             rank_n = int(self.tucker_rank_n_var.get())
             rank_m = int(self.tucker_rank_m_var.get())
             if not (rank_w > 0 and rank_n > 0 and rank_m > 0):
-                raise ValueError("Rangi muszą być dodatnimi liczbami całkowitymi")
+                raise ValueError("Ranks must be positive integers")
         except ValueError as e:
-            messagebox.showerror("Błąd Walidacji", f"Niepoprawne rangi: {e}")
+            messagebox.showerror("Validation Error", f"Invalid ranks: {e}")
             return
 
         try:
             tensor_no_nan = np.nan_to_num(data_source, nan=0.0)
 
-            print(f"Uruchamianie Dekompozycji Tuckera z rangami ({rank_w}, {rank_n}, {rank_m})...")
+            print(f"Running Tucker Decomposition with ranks ({rank_w}, {rank_n}, {rank_m})...")
 
             core, factors = tl.decomposition.tucker(tensor_no_nan, rank=[rank_w, rank_n, rank_m])
 
@@ -1782,20 +1787,20 @@ class ChemTensorApp(ctk.CTk):
 
             self.current_plot_mode = 'TUCKER_RESULTS'
             self.update_plot()
-            messagebox.showinfo("Sukces", "Analiza Tuckera zakończona.")
+            messagebox.showinfo("Success", "Tucker analysis completed.")
             self.focus_set()
 
         except Exception as e:
-            messagebox.showerror("Błąd Tuckera", f"Wystąpił błąd podczas analizy Tuckera:\n{e}")
+            messagebox.showerror("Tucker Error", f"An error occurred during Tucker analysis:\n{e}")
             self.tucker_results = None
 
     def _run_fa_rank_analysis(self):
-        """Tłumaczy logikę 'pfa.m' do obliczania EV, RE i IND na ZAZNACZONYCH danych."""
+        """Translates 'pfa.m' logic for calculating EV, RE, and IND on SELECTED data."""
         X, labels, map_info = self._get_data_matrix_from_selection()
         if X is None: return
 
         try:
-            r, c = X.shape  # r = próbki, c = cechy
+            r, c = X.shape  # r = samples, c = features
 
             malinowski_r = c
             malinowski_c = r
@@ -1805,10 +1810,10 @@ class ChemTensorApp(ctk.CTk):
 
             max_k = sm - 1
             if max_k < 1:
-                messagebox.showerror("Błąd", f"Niewystarczająca liczba próbek lub cech do analizy FA (min. 2x2).")
+                messagebox.showerror("Error", f"Insufficient number of samples or features for FA analysis (min. 2x2).")
                 return
 
-            print("Uruchamianie SVD dla Analizy Faktorowej...")
+            print("Running SVD for Factor Analysis...")
             u, s_vec, vh = np.linalg.svd(X, full_matrices=False)  # X = U @ S @ Vh
 
             ev = s_vec ** 2
@@ -1830,7 +1835,7 @@ class ChemTensorApp(ctk.CTk):
 
                 ind[l] = re_val / ((malinowski_c - matlab_l) ** 2)
 
-            print("Analiza Rangi (RE/IND) zakończona.")
+            print("Rank Analysis (RE/IND) completed.")
 
             self.fa_results = {
                 'u': u, 's_vec': s_vec, 'vh': vh,
@@ -1842,44 +1847,45 @@ class ChemTensorApp(ctk.CTk):
 
             self.current_plot_mode = 'FA_RANK_RESULTS'
             self.update_plot()
+            messagebox.showinfo("Success", "Rank Analysis (RE/IND) completed.")
             self.focus_set()
 
         except Exception as e:
-            messagebox.showerror("Błąd Analizy Faktorowej", f"Wystąpił błąd podczas analizy RE/IND:\n{e}")
+            messagebox.showerror("Factor Analysis Error", f"An error occurred during RE/IND analysis:\n{e}")
             self.fa_results = None
 
     def _run_fa_reconstruction(self):
         if self.fa_results is None:
-            messagebox.showerror("Błąd", "Najpierw uruchom 'Analizę Rangi (RE/IND)', aby wykonać SVD.")
+            messagebox.showerror("Error", "Run 'Rank Analysis (RE/IND)' first to perform SVD.")
             return
 
         try:
             k = int(self.fa_recon_components_var.get())
             max_k = len(self.fa_results['s_vec'])
             if not (0 < k <= max_k):
-                messagebox.showerror("Błąd Walidacji", f"Liczba faktorów musi być między 1 a {max_k}.")
+                messagebox.showerror("Validation Error", f"Number of factors must be between 1 and {max_k}.")
                 return
         except ValueError:
-            messagebox.showerror("Błąd", "Liczba faktorów musi być liczbą całkowitą.")
+            messagebox.showerror("Error", "Number of factors must be an integer.")
             return
 
         try:
-            print(f"Rekonstrukcja FA z {k} faktorami...")
+            print(f"FA Reconstruction with {k} factors...")
             u = self.fa_results['u']
             s_vec = self.fa_results['s_vec']
             vh = self.fa_results['vh']
-            X_original = self.fa_results['X_original']  # (próbki, cechy)
+            X_original = self.fa_results['X_original']  # (samples, features)
 
             u_k = u[:, :k]
             s_k = np.diag(s_vec[:k])
             vh_k = vh[:k, :]
 
-            X_recon = u_k @ s_k @ vh_k  # (próbki, cechy)
+            X_recon = u_k @ s_k @ vh_k  # (samples, features)
 
             residuals = X_original - X_recon
 
-            loadings = vh_k.T  # (cechy, k)
-            scores = u_k @ s_k  # (próbki, k)
+            loadings = vh_k.T  # (features, k)
+            scores = u_k @ s_k  # (samples, k)
 
             self.fa_results['recon_k'] = k
             self.fa_results['recon_X_original'] = X_original
@@ -1890,50 +1896,50 @@ class ChemTensorApp(ctk.CTk):
 
             self.current_plot_mode = 'FA_RECON_RESULTS'
             self.update_plot()
-            messagebox.showinfo("Sukces", "Rekonstrukcja FA zakończona.")
+            messagebox.showinfo("Success", "FA reconstruction completed.")
             self.focus_set()
 
         except Exception as e:
-            messagebox.showerror("Błąd Rekonstrukcji FA", f"Wystąpił błąd:\n{e}")
+            messagebox.showerror("FA Reconstruction Error", f"An error occurred:\n{e}")
 
     def _run_spexfa(self):
-        """Tłumaczy logikę 'spexfa.m' na ZAZNACZONYCH danych."""
+        """Translates 'spexfa.m' logic on SELECTED data."""
         X_selected, labels, map_info = self._get_data_matrix_from_selection()
         if X_selected is None: return
 
         try:
-            n = int(self.spexfa_n_components_var.get())  # Liczba faktorów
+            n = int(self.spexfa_n_components_var.get())  # Number of factors
         except ValueError:
-            messagebox.showerror("Błąd", "Liczba faktorów musi być liczbą całkowitą.")
+            messagebox.showerror("Error", "Number of factors must be an integer.")
             return
 
         try:
-            D = X_selected.T  # (cechy, próbki) - tak jak w spexfa.m
-            r, c = D.shape  # r = cechy, c = próbki
+            D = X_selected.T  # (features, samples) - as in spexfa.m
+            r, c = D.shape  # r = features, c = samples
             sm = min(r, c)
             lg = max(r, c)
 
             if not (0 < n < sm):
-                messagebox.showerror("Błąd Walidacji", f"Liczba faktorów (n) musi być dodatnia i mniejsza niż {sm}.")
+                messagebox.showerror("Validation Error", f"Number of factors (n) must be positive and smaller than {sm}.")
                 return
 
-            print("Uruchamianie SVD dla SPEXFA...")
+            print("Running SVD for SPEXFA...")
             u, s_vec, vh = np.linalg.svd(D, full_matrices=False)
             s_mat = np.diag(s_vec)
 
             u_n = u[:, :n]
             s_n = s_mat[:n, :n]
             vh_n = vh[:n, :]
-            dr = u_n @ s_n @ vh_n  # (cechy, próbki)
+            dr = u_n @ s_n @ vh_n  # (features, samples)
 
             ev = s_vec ** 2
             sev = np.sum(ev[n:])
             re = np.sqrt(sev / (r * (c - n)))
             cutoff = 5 * re * np.sqrt(n)
 
-            ubar = u_n @ s_n  # (cechy, n)
+            ubar = u_n @ s_n  # (features, n)
 
-            print("Wyszukiwanie kluczowych zmiennych (key set)...")
+            print("Searching for key variables (key set)...")
             ubar_norm = np.linalg.norm(ubar, axis=1)
             mask = ubar_norm < cutoff
             ubar_masked = np.copy(ubar)
@@ -1941,8 +1947,8 @@ class ChemTensorApp(ctk.CTk):
 
             ubar_norm_clean_indices = ~mask
             if np.sum(ubar_norm_clean_indices) == 0:
-                messagebox.showerror("Błąd SPEXFA",
-                                     "Brak 'czystych' zmiennych. Wszystkie cechy poniżej progu szumu.\nSpróbuj zmniejszyć liczbę faktorów (n).")
+                messagebox.showerror("SPEXFA Error",
+                                     "No 'pure' variables found. All features below noise threshold.\nTry reducing the number of factors (n).")
                 return
 
             ubar_norm_clean = np.linalg.norm(ubar_masked[ubar_norm_clean_indices, :], axis=1, keepdims=True)
@@ -1991,14 +1997,14 @@ class ChemTensorApp(ctk.CTk):
                     break
                 iter_count += 1
 
-            print(f"SPEXFA: Zestaw kluczy znaleziony w {iter_count} iteracjach: {key}")
+            print(f"SPEXFA: Key set found in {iter_count} iterations: {key}")
 
             conc_transposed = dr[key, :]
-            spex = dr @ pinv(conc_transposed)
+            spex = dr @ np.linalg.pinv(conc_transposed)
 
             self.spexfa_results = {
-                'C': conc_transposed.T,  # (próbki, faktory)
-                'ST': spex,  # (cechy, faktory)
+                'C': conc_transposed.T,  # (samples, factors)
+                'ST': spex,  # (features, factors)
                 'rank': n,
                 'labels': labels,
                 'map_info': map_info
@@ -2006,20 +2012,20 @@ class ChemTensorApp(ctk.CTk):
 
             self.current_plot_mode = 'SPEXFA_RESULTS'
             self.update_plot()
-            messagebox.showinfo("Sukces", "Izolacja Widm Faktorów (spexfa) zakończona.")
+            messagebox.showinfo("Success", "Factor Spectra Isolation (spexfa) completed.")
             self.focus_set()
 
         except Exception as e:
-            messagebox.showerror("Błąd SPEXFA", f"Wystąpił błąd podczas analizy SPEXFA:\n{e}")
+            messagebox.showerror("SPEXFA Error", f"An error occurred during SPEXFA analysis:\n{e}")
             self.spexfa_results = None
 
     def _run_manifold(self, method_name):
-        """Wspólna funkcja dla UMAP i t-SNE."""
+        """Common function for UMAP and t-SNE."""
         X, labels, _ = self._get_data_matrix_from_selection()
         if X is None: return
 
         try:
-            print(f"Uruchamianie {method_name} na {X.shape[0]} próbkach...")
+            print(f"Running {method_name} on {X.shape[0]} samples...")
             if method_name == 'UMAP':
                 model = umap.UMAP(n_components=2, random_state=42)
             else:  # t-SNE
@@ -2036,14 +2042,14 @@ class ChemTensorApp(ctk.CTk):
 
             self.current_plot_mode = 'MANIFOLD_PLOT'
             self.update_plot()
-            messagebox.showinfo("Sukces", f"Analiza {method_name} zakończona.")
+            messagebox.showinfo("Success", f"Analysis {method_name} completed.")
             self.focus_set()
 
         except ImportError:
-            messagebox.showerror("Błąd Importu",
-                                 "Nie znaleziono biblioteki 'umap-learn'.\nUpewnij się, że jest zainstalowana: pip install umap-learn")
+            messagebox.showerror("Import Error",
+                                 "Library 'umap-learn' not found.\nMake sure it is installed: pip install umap-learn")
         except Exception as e:
-            messagebox.showerror(f"Błąd {method_name}", f"Wystąpił błąd:\n{e}")
+            messagebox.showerror(f"Error {method_name}", f"An error occurred:\n{e}")
             self.manifold_results = None
 
     def _run_umap(self):
@@ -2053,7 +2059,7 @@ class ChemTensorApp(ctk.CTk):
         self._run_manifold('t-SNE')
 
     def _run_heatmap(self):
-        """Przełącza tryb wykresu na HEATMAP."""
+        """Switches plot mode to HEATMAP."""
         self.current_plot_mode = 'HEATMAP'
         self.update_plot()
 
@@ -2070,7 +2076,7 @@ class ChemTensorApp(ctk.CTk):
         self.canvas.mpl_connect('button_release_event', self._on_canvas_button_release)
 
     def _change_theme(self, new_theme_str):
-        pass  # Usunięte
+        pass  # Removed
 
     def _apply_theme_to_axis(self, ax, theme):
         ax.set_facecolor(theme['bg_color'])
@@ -2127,27 +2133,27 @@ class ChemTensorApp(ctk.CTk):
 
             if use_preprocessed:
                 if self.preprocessed_tensor is None:
-                    y_label = "Absorbancja"
-                    title_suffix = " (Brak danych po preprocessingu!)"
+                    y_label = "Absorbance"
+                    title_suffix = " (No preprocessed data!)"
                 else:
-                    y_label = "Intensywność (Przetworzone)"
-                    title_suffix = " (Po Preprocessingu)"
+                    y_label = "Intensity (Preprocessed)"
+                    title_suffix = " (After Preprocessing)"
             else:
-                y_label = "Absorbancja"
-                title_suffix = " (Surowe Dane)"
+                y_label = "Absorbance"
+                title_suffix = " (Raw Data)"
 
             if self.wavenumbers is not None:
-                ax.set_xlabel(f"Liczba falowa (wymiar: {len(self.wavenumbers)})")
+                ax.set_xlabel(f"Wavenumber (dimension: {len(self.wavenumbers)})")
                 self._set_wavenumber_axis_inverted(ax)
             else:
-                ax.set_xlabel("Liczba falowa")
+                ax.set_xlabel("Wavenumber")
             ax.set_ylabel(y_label)
 
             if not self.selected_coords:
                 # Try plotting active files from list if no grid selection
                 active_files = [f for f in self.loaded_files if f['active']]
                 if active_files:
-                     ax.set_title(f"Aktywne pliki z listy ({len(active_files)})" + title_suffix)
+                     ax.set_title(f"Active files from list ({len(active_files)})" + title_suffix)
                      if self.wavenumbers is not None:
                          # Check if we have preprocessed data matching the list
                          if use_preprocessed and self.preprocessed_tensor is not None:
@@ -2165,14 +2171,14 @@ class ChemTensorApp(ctk.CTk):
                              for i, f in enumerate(active_files):
                                  ax.plot(self.wavenumbers, f['data'], label=f"{i+1}. {f['name']}")
                 else:
-                    ax.set_title("Panel Wykresów (Wybierz komórki lub załaduj pliki)")
+                    ax.set_title("Plot Panel (Select cells or load files)")
             else:
-                ax.set_title(f"Zaznaczono {len(self.selected_coords)} widm" + title_suffix)
+                ax.set_title(f"Selected {len(self.selected_coords)} spectra" + title_suffix)
                 if data_source is not None and self.wavenumbers is not None:
                     for coords in self.selected_coords:
                         r, c = coords
                         if not np.isnan(data_source[0, r, c]):
-                            ax.plot(self.wavenumbers, data_source[:, r, c], label=f"Widmo {coords}")
+                            ax.plot(self.wavenumbers, data_source[:, r, c], label=f"Spectrum {coords}")
             
             if (self.selected_coords and len(self.selected_coords) <= 10) or (not self.selected_coords and len(self.loaded_files) <= 10):
                     legend = ax.legend(loc='best')
@@ -2195,22 +2201,22 @@ class ChemTensorApp(ctk.CTk):
             ax1.set_title("Score Plot");
             ax1.grid(True, linestyle=':', alpha=0.2, color=theme['grid_color'])
 
-            ax2 = self.axes[0, 1]  # Wspólne Ładunki
+            ax2 = self.axes[0, 1]  # Common Loadings
             if self.wavenumbers is not None:
                 for i in range(n_components): ax2.plot(self.wavenumbers, loadings[:, i], label=f"PC{i + 1}")
-            ax2.set_xlabel("Liczba falowa");
-            ax2.set_ylabel("Ładunek");
-            ax2.set_title("Wspólne Ładunki (Loadings)")
+            ax2.set_xlabel("Wavenumber");
+            ax2.set_ylabel("Loading");
+            ax2.set_title("Common Loadings")
             self._set_wavenumber_axis_inverted(ax2);
             self._apply_theme_to_legend(ax2.legend(loc='best'), theme);
             ax2.grid(True, linestyle=':', alpha=0.2, color=theme['grid_color'])
 
-            ax3 = self.axes[1, 0]  # Scores vs. Próbka
+            ax3 = self.axes[1, 0]  # Scores vs. Sample
             sample_indices = np.arange(len(labels))
             for i in range(n_components): ax3.plot(sample_indices, scores[:, i], 'o-', markersize=4, label=f'PC{i + 1}')
-            ax3.set_xlabel("Próbka");
-            ax3.set_ylabel("Wartość Wyniku (Score)");
-            ax3.set_title("Wyniki (Scores) vs. Próbka")
+            ax3.set_xlabel("Sample");
+            ax3.set_ylabel("Score Value");
+            ax3.set_title("Scores vs. Sample")
             ax3.set_xticks(sample_indices);
             ax3.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
             self._apply_theme_to_legend(ax3.legend(loc='best'), theme);
@@ -2219,13 +2225,13 @@ class ChemTensorApp(ctk.CTk):
             ax4 = self.axes[1, 1]  # Scree Plot
             pc_range = np.arange(1, len(variance) + 1)
             ax4.bar(pc_range, variance * 100, color="#AAAAFF", alpha=0.7)
-            ax4.set_ylabel("Wariancja wyjaśniona (%)", color="#AAAAFF");
-            ax4.set_xlabel("Komponent")
+            ax4.set_ylabel("Explained Variance (%)", color="#AAAAFF");
+            ax4.set_xlabel("Component")
             ax4.set_title("Scree Plot");
             ax4.set_xticks(pc_range)
             ax4b = ax4.twinx()
             ax4b.plot(pc_range, np.cumsum(variance * 100), 'r-o', markersize=4)
-            ax4b.set_ylabel("Suma kumulacyjna (%)", color="red");
+            ax4b.set_ylabel("Cumulative Sum (%)", color="red");
             ax4b.tick_params(axis='y', colors="red")
             ax4b.spines['right'].set_color('red')
 
@@ -2237,37 +2243,37 @@ class ChemTensorApp(ctk.CTk):
             X_recon = self.pca_results['X_reconstructed']
             residuals = self.pca_results['residuals']
 
-            ax1 = self.axes[0, 0]  # Wybrane Ładunki
+            ax1 = self.axes[0, 0]  # Selected Loadings
             if self.wavenumbers is not None:
                 for i in range(k): ax1.plot(self.wavenumbers, loadings[:, i], label=f"PC{i + 1}")
-            ax1.set_title(f"Wybrane Ładunki (Użyte {k} PC)");
-            ax1.set_xlabel("Liczba falowa");
-            ax1.set_ylabel("Ładunek")
+            ax1.set_title(f"Selected Loadings (Used {k} PC)");
+            ax1.set_xlabel("Wavenumber");
+            ax1.set_ylabel("Loading")
             self._set_wavenumber_axis_inverted(ax1);
             self._apply_theme_to_legend(ax1.legend(loc='best'), theme)
 
-            ax2 = self.axes[0, 1]  # Widma Oryginalne
+            ax2 = self.axes[0, 1]  # Original Spectra
             if self.wavenumbers is not None:
                 for i in range(X_original.shape[0]): ax2.plot(self.wavenumbers, X_original[i, :], alpha=0.7)
-            ax2.set_title("Widma Oryginalne");
-            ax2.set_xlabel("Liczba falowa");
-            ax2.set_ylabel("Absorbancja")
+            ax2.set_title("Original Spectra");
+            ax2.set_xlabel("Wavenumber");
+            ax2.set_ylabel("Absorbance")
             self._set_wavenumber_axis_inverted(ax2)
 
-            ax3 = self.axes[1, 0]  # Widma Odtworzone
+            ax3 = self.axes[1, 0]  # Reconstructed Spectra
             if self.wavenumbers is not None:
                 for i in range(X_recon.shape[0]): ax3.plot(self.wavenumbers, X_recon[i, :], alpha=0.7)
-            ax3.set_title(f"Widma Odtworzone (z {k} PC)");
-            ax3.set_xlabel("Liczba falowa");
-            ax3.set_ylabel("Absorbancja")
+            ax3.set_title(f"Reconstructed Spectra (with {k} PC)");
+            ax3.set_xlabel("Wavenumber");
+            ax3.set_ylabel("Absorbance")
             self._set_wavenumber_axis_inverted(ax3)
 
-            ax4 = self.axes[1, 1]  # Rezydua
+            ax4 = self.axes[1, 1]  # Residuals
             if self.wavenumbers is not None:
                 for i in range(residuals.shape[0]): ax4.plot(self.wavenumbers, residuals[i, :], alpha=0.7)
-            ax4.set_title("Rezydua (Oryginał - Odtworzone)");
-            ax4.set_xlabel("Liczba falowa");
-            ax4.set_ylabel("Różnica")
+            ax4.set_title("Residuals (Original - Reconstructed)");
+            ax4.set_xlabel("Wavenumber");
+            ax4.set_ylabel("Difference")
             self._set_wavenumber_axis_inverted(ax4)
 
         elif self.current_plot_mode == 'PARAFAC' and self.parafac_results:
@@ -2276,42 +2282,42 @@ class ChemTensorApp(ctk.CTk):
             weights = self.parafac_results['weights']
             k = factors[0].shape[1]
 
-            ax1 = self.axes[0, 0]  # Widma Składowych (Mode 0)
+            ax1 = self.axes[0, 0]  # Component Spectra (Mode 0)
             if self.wavenumbers is not None:
-                for i in range(k): ax1.plot(self.wavenumbers, factors[0][:, i], label=f"Skł. {i + 1}")
-            ax1.set_title("PARAFAC: Widma Składowych (Mode 0)")
-            ax1.set_xlabel("Liczba falowa");
-            ax1.set_ylabel("Ładunek")
+                for i in range(k): ax1.plot(self.wavenumbers, factors[0][:, i], label=f"Comp. {i + 1}")
+            ax1.set_title("PARAFAC: Component Spectra (Mode 0)")
+            ax1.set_xlabel("Wavenumber");
+            ax1.set_ylabel("Loading")
             self._set_wavenumber_axis_inverted(ax1);
             self._apply_theme_to_legend(ax1.legend(loc='best'), theme);
             ax1.grid(True, linestyle=':', alpha=0.2, color=theme['grid_color'])
 
-            ax2 = self.axes[0, 1]  # Trendy Wierszy (Mode 1)
+            ax2 = self.axes[0, 1]  # Row Trends (Mode 1)
             x_axis_n = np.arange(self.n_rows)
-            for i in range(k): ax2.plot(x_axis_n, factors[1][:, i], 'o-', markersize=4, label=f"Skł. {i + 1}")
-            ax2.set_title("PARAFAC: Trendy Wierszy (Mode 1)")
-            ax2.set_xlabel("Indeks Wiersza (N)");
-            ax2.set_ylabel("Waga")
+            for i in range(k): ax2.plot(x_axis_n, factors[1][:, i], 'o-', markersize=4, label=f"Comp. {i + 1}")
+            ax2.set_title("PARAFAC: Row Trends (Mode 1)")
+            ax2.set_xlabel("Row Index (N)");
+            ax2.set_ylabel("Weight")
             ax2.set_xticks(x_axis_n)
             self._apply_theme_to_legend(ax2.legend(loc='best'), theme);
             ax2.grid(True, linestyle=':', alpha=0.2, color=theme['grid_color'])
 
-            ax3 = self.axes[1, 0]  # Trendy Kolumn (Mode 2)
+            ax3 = self.axes[1, 0]  # Column Trends (Mode 2)
             x_axis_m = np.arange(self.m_cols)
-            for i in range(k): ax3.plot(x_axis_m, factors[2][:, i], 'o-', markersize=4, label=f"Skł. {i + 1}")
-            ax3.set_title("PARAFAC: Trendy Kolumn (Mode 2)")
-            ax3.set_xlabel("Indeks Kolumny (M)");
-            ax3.set_ylabel("Waga")
+            for i in range(k): ax3.plot(x_axis_m, factors[2][:, i], 'o-', markersize=4, label=f"Comp. {i + 1}")
+            ax3.set_title("PARAFAC: Column Trends (Mode 2)")
+            ax3.set_xlabel("Column Index (M)");
+            ax3.set_ylabel("Weight")
             ax3.set_xticks(x_axis_m)
             self._apply_theme_to_legend(ax3.legend(loc='best'), theme);
             ax3.grid(True, linestyle=':', alpha=0.2, color=theme['grid_color'])
 
-            ax4 = self.axes[1, 1]  # Wagi Składowych
+            ax4 = self.axes[1, 1]  # Component Weights
             comp_range = np.arange(1, k + 1)
             ax4.bar(comp_range, weights, color="#AAAAFF", alpha=0.7)
-            ax4.set_ylabel("Waga Składowej", color=theme['text_color'])
-            ax4.set_xlabel("Składowa");
-            ax4.set_title("PARAFAC: Wagi Składowych")
+            ax4.set_ylabel("Component Weight", color=theme['text_color'])
+            ax4.set_xlabel("Component");
+            ax4.set_title("PARAFAC: Component Weights")
             ax4.set_xticks(comp_range)
 
         elif self.current_plot_mode == 'MCR' and self.mcr_results:
@@ -2320,27 +2326,27 @@ class ChemTensorApp(ctk.CTk):
             ST = self.mcr_results['ST']  # (w, k)
             k = self.mcr_results['rank']
 
-            ax1 = self.axes[0, 0]  # Widma Składowych
+            ax1 = self.axes[0, 0]  # Component Spectra
             if self.wavenumbers is not None:
-                for i in range(k): ax1.plot(self.wavenumbers, ST[:, i], label=f"Skł. {i + 1}")
-            ax1.set_title("MCR: Widma Składowych");
-            ax1.set_xlabel("Liczba falowa");
-            ax1.set_ylabel("Intensywność")
+                for i in range(k): ax1.plot(self.wavenumbers, ST[:, i], label=f"Comp. {i + 1}")
+            ax1.set_title("MCR: Component Spectra");
+            ax1.set_xlabel("Wavenumber");
+            ax1.set_ylabel("Intensity")
             self._set_wavenumber_axis_inverted(ax1);
             self._apply_theme_to_legend(ax1.legend(loc='best'), theme);
             ax1.grid(True, linestyle=':', alpha=0.2, color=theme['grid_color'])
 
-            ax2 = self.axes[0, 1]  # Profile Stężeń (Liniowo)
+            ax2 = self.axes[0, 1]  # Concentration Profiles (Linear)
             x_axis_nm = np.arange(C.shape[0])
-            for i in range(k): ax2.plot(x_axis_nm, C[:, i], 'o-', markersize=3, alpha=0.8, label=f"Skł. {i + 1}")
-            ax2.set_title("MCR: Profile Stężeń (Liniowo)");
-            ax2.set_xlabel(f"Indeks Próbki (0...{len(x_axis_nm) - 1})");
-            ax2.set_ylabel("Względne Stężenie")
+            for i in range(k): ax2.plot(x_axis_nm, C[:, i], 'o-', markersize=3, alpha=0.8, label=f"Comp. {i + 1}")
+            ax2.set_title("MCR: Concentration Profiles (Linear)");
+            ax2.set_xlabel(f"Sample Index (0...{len(x_axis_nm) - 1})");
+            ax2.set_ylabel("Relative Concentration")
             self._apply_theme_to_legend(ax2.legend(loc='best'), theme);
             ax2.grid(True, linestyle=':', alpha=0.2, color=theme['grid_color'])
 
-            ax3 = self.axes[1, 0]  # Mapa Stężeń (Skł. 1)
-            ax4 = self.axes[1, 1]  # Mapa Stężeń (Skł. 2)
+            ax3 = self.axes[1, 0]  # Concentration Map (Comp. 1)
+            ax4 = self.axes[1, 1]  # Concentration Map (Comp. 2)
 
             is_grid = self.mcr_results.get('is_grid_data', False)
             
@@ -2348,34 +2354,34 @@ class ChemTensorApp(ctk.CTk):
                 c1_map = C[:, 0].reshape((self.n_rows, self.m_cols))
                 im3 = ax3.imshow(c1_map, aspect='auto', interpolation='nearest', cmap='viridis')
                 self.fig.colorbar(im3, ax=ax3)
-                ax3.set_title("MCR: Mapa Stężeń (Skł. 1)");
-                ax3.set_xlabel("Indeks Kolumny (M)");
-                ax3.set_ylabel("Indeks Wiersza (N)")
+                ax3.set_title("MCR: Concentration Map (Comp. 1)");
+                ax3.set_xlabel("Column Index (M)");
+                ax3.set_ylabel("Row Index (N)")
 
                 if k > 1:
                     c2_map = C[:, 1].reshape((self.n_rows, self.m_cols))
                     im4 = ax4.imshow(c2_map, aspect='auto', interpolation='nearest', cmap='viridis')
                     self.fig.colorbar(im4, ax=ax4)
-                    ax4.set_title("MCR: Mapa Stężeń (Skł. 2)")
+                    ax4.set_title("MCR: Concentration Map (Comp. 2)")
                 else:
                     ax4.set_title("MCR")
-                ax4.set_xlabel("Indeks Kolumny (M)");
-                ax4.set_ylabel("Indeks Wiersza (N)")
+                ax4.set_xlabel("Column Index (M)");
+                ax4.set_ylabel("Row Index (N)")
             else:
                 # List mode - plot concentration profiles as bar/line plot instead of map
-                ax3.plot(C[:, 0], 'o-', label="Skł. 1")
-                ax3.set_title("MCR: Profil Stężeń (Skł. 1)")
-                ax3.set_xlabel("Indeks Próbki (Lista)")
-                ax3.set_ylabel("Stężenie")
+                ax3.plot(C[:, 0], 'o-', label="Comp. 1")
+                ax3.set_title("MCR: Concentration Profile (Comp. 1)")
+                ax3.set_xlabel("Sample Index (List)")
+                ax3.set_ylabel("Concentration")
                 ax3.grid(True, linestyle=':', alpha=0.5)
                 
                 if k > 1:
-                    ax4.plot(C[:, 1], 'o-', label="Skł. 2", color='orange')
-                    ax4.set_title("MCR: Profil Stężeń (Skł. 2)")
+                    ax4.plot(C[:, 1], 'o-', label="Comp. 2", color='orange')
+                    ax4.set_title("MCR: Concentration Profile (Comp. 2)")
                 else:
                     ax4.set_title("MCR")
-                ax4.set_xlabel("Indeks Próbki (Lista)")
-                ax4.set_ylabel("Stężenie")
+                ax4.set_xlabel("Sample Index (List)")
+                ax4.set_ylabel("Concentration")
                 ax4.grid(True, linestyle=':', alpha=0.5)
 
         elif self.current_plot_mode == 'TENSOR_RECONSTRUCTION' and self.tensor_recon_results:
@@ -2387,52 +2393,52 @@ class ChemTensorApp(ctk.CTk):
             recon_tensor = self.tensor_recon_results['recon_tensor']
             resid_tensor = self.tensor_recon_results['residual_tensor']
 
-            ax1 = self.axes[0, 0]  # Wybrane Ładunki
+            ax1 = self.axes[0, 0]  # Selected Loadings
             if self.wavenumbers is not None:
-                for i in range(k): ax1.plot(self.wavenumbers, components[:, i], label=f"Skł. {i + 1}")
-            ax1.set_title(f"Użyte Składowe ({source.upper()}, k={k})");
-            ax1.set_xlabel("Liczba falowa");
-            ax1.set_ylabel("Intensywność")
+                for i in range(k): ax1.plot(self.wavenumbers, components[:, i], label=f"Comp. {i + 1}")
+            ax1.set_title(f"Used Components ({source.upper()}, k={k})");
+            ax1.set_xlabel("Wavenumber");
+            ax1.set_ylabel("Intensity")
             self._set_wavenumber_axis_inverted(ax1);
             self._apply_theme_to_legend(ax1.legend(loc='best'), theme)
 
-            ax2 = self.axes[0, 1]  # Widma Oryginalne (z zaznaczenia)
+            ax2 = self.axes[0, 1]  # Original Spectra (from selection)
             if not self.selected_coords:
-                ax2.text(0.5, 0.5, "Zaznacz komórki\naby zobaczyć podgląd", ha='center', va='center',
+                ax2.text(0.5, 0.5, "Select cells\nto see preview", ha='center', va='center',
                          color=theme['text_color'])
             elif self.wavenumbers is not None:
                 for coords in self.selected_coords:
                     r, c = coords
                     ax2.plot(self.wavenumbers, source_tensor[:, r, c], alpha=0.7)
-            ax2.set_title("Widma Oryginalne (z zaznaczenia)");
-            ax2.set_xlabel("Liczba falowa");
-            ax2.set_ylabel("Absorbancja")
+            ax2.set_title("Original Spectra (from selection)");
+            ax2.set_xlabel("Wavenumber");
+            ax2.set_ylabel("Absorbance")
             self._set_wavenumber_axis_inverted(ax2)
 
-            ax3 = self.axes[1, 0]  # Widma Odtworzone (z zaznaczenia)
+            ax3 = self.axes[1, 0]  # Reconstructed Spectra (from selection)
             if not self.selected_coords:
-                ax3.text(0.5, 0.5, "Zaznacz komórki\naby zobaczyć podgląd", ha='center', va='center',
+                ax3.text(0.5, 0.5, "Select cells\nto see preview", ha='center', va='center',
                          color=theme['text_color'])
             elif self.wavenumbers is not None:
                 for coords in self.selected_coords:
                     r, c = coords
                     ax3.plot(self.wavenumbers, recon_tensor[:, r, c], alpha=0.7)
-            ax3.set_title("Widma Odtworzone (z zaznaczenia)");
-            ax3.set_xlabel("Liczba falowa");
-            ax3.set_ylabel("Absorbancja")
+            ax3.set_title("Reconstructed Spectra (from selection)");
+            ax3.set_xlabel("Wavenumber");
+            ax3.set_ylabel("Absorbance")
             self._set_wavenumber_axis_inverted(ax3)
 
-            ax4 = self.axes[1, 1]  # Rezydua (z zaznaczenia)
+            ax4 = self.axes[1, 1]  # Residuals (from selection)
             if not self.selected_coords:
-                ax4.text(0.5, 0.5, "Zaznacz komórki\naby zobaczyć podgląd", ha='center', va='center',
+                ax4.text(0.5, 0.5, "Select cells\nto see preview", ha='center', va='center',
                          color=theme['text_color'])
             elif self.wavenumbers is not None:
                 for coords in self.selected_coords:
                     r, c = coords
                     ax4.plot(self.wavenumbers, resid_tensor[:, r, c], alpha=0.7)
-            ax4.set_title("Rezydua (Oryginał - Odtworzone)");
-            ax4.set_xlabel("Liczba falowa");
-            ax4.set_ylabel("Różnica")
+            ax4.set_title("Residuals (Original - Reconstructed)");
+            ax4.set_xlabel("Wavenumber");
+            ax4.set_ylabel("Difference")
             self._set_wavenumber_axis_inverted(ax4)
 
         elif self.current_plot_mode == '3DCOS_SLICER' and self.cos_3d_results:
@@ -2440,7 +2446,7 @@ class ChemTensorApp(ctk.CTk):
             self.cos_slider.grid()
 
             slice_index = int(self.cos_slice_var.get())
-            self.cos_slider_label.configure(text=f"Plaster Modulatora ({slice_index}):")
+            self.cos_slider_label.configure(text=f"Modulator Slice ({slice_index}):")
 
             phi_map = self.cos_3d_results['phi'][:, :, slice_index]
             psi_map = self.cos_3d_results['psi'][:, :, slice_index]
@@ -2454,9 +2460,9 @@ class ChemTensorApp(ctk.CTk):
             vmax_phi = np.max(np.abs(phi_map[np.isfinite(phi_map)]))
             im1 = ax1.imshow(phi_map, cmap='RdBu_r', vmin=-vmax_phi, vmax=vmax_phi, extent=extent,
                              interpolation='nearest')
-            ax1.set_title(f"Mapa Synchroniczna (Plaster {slice_index})")
-            ax1.set_xlabel("Liczba falowa (v1)");
-            ax1.set_ylabel("Liczba falowa (v2)")
+            ax1.set_title(f"Synchronous Map (Slice {slice_index})")
+            ax1.set_xlabel("Wavenumber (v1)");
+            ax1.set_ylabel("Wavenumber (v2)")
             self.fig.colorbar(im1, ax=ax1, format='%.2e')
 
             ax2 = self.axes[0, 1]
@@ -2464,9 +2470,9 @@ class ChemTensorApp(ctk.CTk):
             vmax_psi = np.max(np.abs(psi_map[np.isfinite(psi_map)]))
             im2 = ax2.imshow(psi_map, cmap='RdBu_r', vmin=-vmax_psi, vmax=vmax_psi, extent=extent,
                              interpolation='nearest')
-            ax2.set_title(f"Mapa Asynchroniczna (Plaster {slice_index})")
-            ax2.set_xlabel("Liczba falowa (v1)");
-            ax2.set_ylabel("Liczba falowa (v2)")
+            ax2.set_title(f"Asynchronous Map (Slice {slice_index})")
+            ax2.set_xlabel("Wavenumber (v1)");
+            ax2.set_ylabel("Wavenumber (v2)")
             self.fig.colorbar(im2, ax=ax2, format='%.2e')
 
             self.axes[1, 0].set_visible(False)
@@ -2480,14 +2486,14 @@ class ChemTensorApp(ctk.CTk):
 
             if self.wavenumbers is not None:
                 ax.plot(self.wavenumbers, coefs)
-                ax.set_xlabel("Liczba falowa")
+                ax.set_xlabel("Wavenumber")
                 self._set_wavenumber_axis_inverted(ax)
             else:
                 ax.plot(coefs)
-                ax.set_xlabel("Indeks Zmiennej")
+                ax.set_xlabel("Variable Index")
 
-            ax.set_ylabel("Współczynnik Regresji PLS")
-            ax.set_title(f"Ważność Zmiennych dla: {target_name}")
+            ax.set_ylabel("PLS Regression Coefficient")
+            ax.set_title(f"Variable Importance for: {target_name}")
             ax.grid(True, linestyle=':', alpha=0.2, color=theme['grid_color'])
             ax.axhline(0, color=theme['spine_color'], linestyle='--')
 
@@ -2498,40 +2504,40 @@ class ChemTensorApp(ctk.CTk):
 
             rank_w, rank_n, rank_m = core.shape
 
-            ax1 = self.axes[0, 0]  # Faktor 0 (Widma)
+            ax1 = self.axes[0, 0]  # Factor 0 (Spectra)
             if self.wavenumbers is not None:
-                for i in range(rank_w): ax1.plot(self.wavenumbers, factors[0][:, i], label=f"Skł. {i + 1}")
-            ax1.set_title("Tucker: Widma Bazowe (Mode 0)")
-            ax1.set_xlabel("Liczba falowa");
-            ax1.set_ylabel("Ładunek")
+                for i in range(rank_w): ax1.plot(self.wavenumbers, factors[0][:, i], label=f"Comp. {i + 1}")
+            ax1.set_title("Tucker: Basis Spectra (Mode 0)")
+            ax1.set_xlabel("Wavenumber");
+            ax1.set_ylabel("Loading")
             self._set_wavenumber_axis_inverted(ax1);
             self._apply_theme_to_legend(ax1.legend(loc='best'), theme)
 
-            ax2 = self.axes[0, 1]  # Faktor 1 (Trendy N)
+            ax2 = self.axes[0, 1]  # Factor 1 (Trends N)
             x_axis_n = np.arange(self.n_rows)
-            for i in range(rank_n): ax2.plot(x_axis_n, factors[1][:, i], 'o-', markersize=4, label=f"Skł. {i + 1}")
-            ax2.set_title("Tucker: Trendy Wierszy (Mode 1)")
-            ax2.set_xlabel("Indeks Wiersza (N)");
-            ax2.set_ylabel("Waga")
+            for i in range(rank_n): ax2.plot(x_axis_n, factors[1][:, i], 'o-', markersize=4, label=f"Comp. {i + 1}")
+            ax2.set_title("Tucker: Row Trends (Mode 1)")
+            ax2.set_xlabel("Row Index (N)");
+            ax2.set_ylabel("Weight")
             ax2.set_xticks(x_axis_n)
             self._apply_theme_to_legend(ax2.legend(loc='best'), theme)
 
-            ax3 = self.axes[1, 0]  # Faktor 2 (Trendy M)
+            ax3 = self.axes[1, 0]  # Factor 2 (Trends M)
             x_axis_m = np.arange(self.m_cols)
-            for i in range(rank_m): ax3.plot(x_axis_m, factors[2][:, i], 'o-', markersize=4, label=f"Skł. {i + 1}")
-            ax3.set_title("Tucker: Trendy Kolumn (Mode 2)")
-            ax3.set_xlabel("Indeks Kolumny (M)");
-            ax3.set_ylabel("Waga")
+            for i in range(rank_m): ax3.plot(x_axis_m, factors[2][:, i], 'o-', markersize=4, label=f"Comp. {i + 1}")
+            ax3.set_title("Tucker: Column Trends (Mode 2)")
+            ax3.set_xlabel("Column Index (M)");
+            ax3.set_ylabel("Weight")
             ax3.set_xticks(x_axis_m)
             self._apply_theme_to_legend(ax3.legend(loc='best'), theme)
 
-            ax4 = self.axes[1, 1]  # Tensor Rdzeniowy (Plaster 0)
+            ax4 = self.axes[1, 1]  # Core Tensor (Slice 0)
             core_slice = core[:, :, 0]
             vmax = np.max(np.abs(core_slice))
             im4 = ax4.imshow(core_slice, cmap='RdBu_r', vmin=-vmax, vmax=vmax, interpolation='nearest', aspect='auto')
-            ax4.set_title(f"Tensor Rdzeniowy $\mathcal{{G}}$ (Plaster: 0)")
-            ax4.set_xlabel(f"Indeks Wiersza (N) [0..{rank_n - 1}]");
-            ax4.set_ylabel(f"Indeks Widma (W) [0..{rank_w - 1}]")
+            ax4.set_title(r"Core Tensor $\mathcal{G}$ (Slice: 0)")
+            ax4.set_xlabel(f"Row Index (N) [0..{rank_n - 1}]");
+            ax4.set_ylabel(f"Spectrum Index (W) [0..{rank_w - 1}]")
             ax4.set_xticks(np.arange(rank_n));
             ax4.set_yticks(np.arange(rank_w))
             self.fig.colorbar(im4, ax=ax4)
@@ -2543,25 +2549,25 @@ class ChemTensorApp(ctk.CTk):
             ind = self.fa_results['ind']
             max_k = self.fa_results['max_k'];
             x_axis = np.arange(1, max_k + 1)
-            loadings = self.fa_results['vh'].T  # (cechy, k)
-            scores_raw = self.fa_results['u'] @ np.diag(self.fa_results['s_vec'])  # (próbki, k)
+            loadings = self.fa_results['vh'].T  # (features, k)
+            scores_raw = self.fa_results['u'] @ np.diag(self.fa_results['s_vec'])  # (samples, k)
             labels = self.fa_results['labels']
 
-            ax1 = self.axes[0, 0]  # Wykres Osypiska (EV)
-            ax1.plot(x_axis, ev[:max_k], 'o-', label='Wartości Własne')
+            ax1 = self.axes[0, 0]  # Scree Plot (EV)
+            ax1.plot(x_axis, ev[:max_k], 'o-', label='Eigenvalues')
             ax1.set_yscale('log')
-            ax1.set_title("Wykres Osypiska (Eigenvalues)")
-            ax1.set_xlabel("Liczba Faktorów");
-            ax1.set_ylabel("Log(Wartość Własna)")
+            ax1.set_title("Scree Plot (Eigenvalues)")
+            ax1.set_xlabel("Number of Factors");
+            ax1.set_ylabel("Log(Eigenvalue)")
             ax1.grid(True, linestyle=':', alpha=0.2, color=theme['grid_color'])
 
-            ax2 = self.axes[0, 1]  # Błąd Rzeczywisty (RE) i Funkcja Wskaźnikowa (IND)
+            ax2 = self.axes[0, 1]  # Real Error (RE) and Indicator Function (IND)
             color_re = 'tab:blue'
             ax2.plot(x_axis, np.log(re), 'o-', color=color_re, label='log(RE)')
-            ax2.set_xlabel("Liczba Faktorów");
+            ax2.set_xlabel("Number of Factors");
             ax2.set_ylabel("log(RE)", color=color_re)
             ax2.tick_params(axis='y', labelcolor=color_re)
-            ax2.set_title("Wskaźniki Rangi Malinowskiego")
+            ax2.set_title("Malinowski Rank Indicators")
 
             ax2b = ax2.twinx()
             color_ind = 'tab:red'
@@ -2570,20 +2576,20 @@ class ChemTensorApp(ctk.CTk):
             ax2b.tick_params(axis='y', labelcolor=color_ind)
             ax2.grid(True, linestyle=':', alpha=0.2, color=theme['grid_color'])
 
-            ax3 = self.axes[1, 0]  # Widma Abstrakcyjne
+            ax3 = self.axes[1, 0]  # Abstract Spectra
             if self.wavenumbers is not None:
-                for i in range(max_k): ax3.plot(self.wavenumbers, loadings[:, i], label=f"Faktor {i + 1}")
-            ax3.set_title("Widma Abstrakcyjne (Ładunki)");
-            ax3.set_xlabel("Liczba falowa")
+                for i in range(max_k): ax3.plot(self.wavenumbers, loadings[:, i], label=f"Factor {i + 1}")
+            ax3.set_title("Abstract Spectra (Loadings)");
+            ax3.set_xlabel("Wavenumber")
             self._set_wavenumber_axis_inverted(ax3);
             if max_k <= 10: self._apply_theme_to_legend(ax3.legend(loc='best'), theme)
 
-            ax4 = self.axes[1, 1]  # Profile Abstrakcyjne
+            ax4 = self.axes[1, 1]  # Abstract Profiles
             sample_indices = np.arange(len(labels))
             for i in range(max_k): ax4.plot(sample_indices, scores_raw[:, i], 'o-', markersize=4,
-                                            label=f'Faktor {i + 1}')
-            ax4.set_title("Profile Abstrakcyjne (Wyniki)");
-            ax4.set_xlabel("Próbka")
+                                            label=f'Factor {i + 1}')
+            ax4.set_title("Abstract Profiles (Scores)");
+            ax4.set_xlabel("Sample")
             ax4.set_xticks(sample_indices);
             ax4.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
             if max_k <= 10: self._apply_theme_to_legend(ax4.legend(loc='best'), theme)
@@ -2591,71 +2597,71 @@ class ChemTensorApp(ctk.CTk):
         elif self.current_plot_mode == 'FA_RECON_RESULTS' and self.fa_results:
             for ax in self.axes.flat: ax.set_visible(True)
             k = self.fa_results['recon_k']
-            loadings_k = self.fa_results['recon_loadings_k']  # (cechy, k)
+            loadings_k = self.fa_results['recon_loadings_k']  # (features, k)
             X_original = self.fa_results['recon_X_original']
             X_recon = self.fa_results['recon_X_recon']
             residuals = self.fa_results['recon_residuals']
 
-            ax1 = self.axes[0, 0]  # Wybrane Ładunki
+            ax1 = self.axes[0, 0]  # Selected Loadings
             if self.wavenumbers is not None:
-                for i in range(k): ax1.plot(self.wavenumbers, loadings_k[:, i], label=f"Faktor {i + 1}")
-            ax1.set_title(f"Użyte Faktory (Widma Abstrakcyjne, k={k})");
-            ax1.set_xlabel("Liczba falowa");
-            ax1.set_ylabel("Ładunek")
+                for i in range(k): ax1.plot(self.wavenumbers, loadings_k[:, i], label=f"Factor {i + 1}")
+            ax1.set_title(f"Used Factors (Abstract Spectra, k={k})");
+            ax1.set_xlabel("Wavenumber");
+            ax1.set_ylabel("Loading")
             self._set_wavenumber_axis_inverted(ax1);
             self._apply_theme_to_legend(ax1.legend(loc='best'), theme)
 
-            ax2 = self.axes[0, 1]  # Widma Oryginalne
+            ax2 = self.axes[0, 1]  # Original Spectra
             if self.wavenumbers is not None:
                 for i in range(X_original.shape[0]): ax2.plot(self.wavenumbers, X_original[i, :], alpha=0.7)
-            ax2.set_title("Widma Oryginalne (Zaznaczone)");
-            ax2.set_xlabel("Liczba falowa");
-            ax2.set_ylabel("Absorbancja")
+            ax2.set_title("Original Spectra (Selected)");
+            ax2.set_xlabel("Wavenumber");
+            ax2.set_ylabel("Absorbance")
             self._set_wavenumber_axis_inverted(ax2)
 
-            ax3 = self.axes[1, 0]  # Widma Odtworzone
+            ax3 = self.axes[1, 0]  # Reconstructed Spectra
             if self.wavenumbers is not None:
                 for i in range(X_recon.shape[0]): ax3.plot(self.wavenumbers, X_recon[i, :], alpha=0.7)
-            ax3.set_title(f"Widma Odtworzone (z {k} faktorów)");
-            ax3.set_xlabel("Liczba falowa");
-            ax3.set_ylabel("Absorbancja")
+            ax3.set_title(f"Reconstructed Spectra (with {k} factors)");
+            ax3.set_xlabel("Wavenumber");
+            ax3.set_ylabel("Absorbance")
             self._set_wavenumber_axis_inverted(ax3)
 
-            ax4 = self.axes[1, 1]  # Rezydua
+            ax4 = self.axes[1, 1]  # Residuals
             if self.wavenumbers is not None:
                 for i in range(residuals.shape[0]): ax4.plot(self.wavenumbers, residuals[i, :], alpha=0.7)
-            ax4.set_title("Rezydua (Oryginał - Odtworzone)");
-            ax4.set_xlabel("Liczba falowa");
-            ax4.set_ylabel("Różnica")
+            ax4.set_title("Residuals (Original - Reconstructed)");
+            ax4.set_xlabel("Wavenumber");
+            ax4.set_ylabel("Difference")
             self._set_wavenumber_axis_inverted(ax4)
 
         elif self.current_plot_mode == 'SPEXFA_RESULTS' and self.spexfa_results:
-            ax1 = self.axes[0, 0]  # Widma Wyizolowane
+            ax1 = self.axes[0, 0]  # Isolated Spectra
             ax1.set_visible(True)
-            ax2 = self.axes[0, 1]  # Profile Stężeń
+            ax2 = self.axes[0, 1]  # Concentration Profiles
             ax2.set_visible(True)
             self.axes[1, 0].set_visible(False)
             self.axes[1, 1].set_visible(False)
 
-            C = self.spexfa_results['C']  # (próbki, k)
-            ST = self.spexfa_results['ST']  # (cechy, k)
+            C = self.spexfa_results['C']  # (samples, k)
+            ST = self.spexfa_results['ST']  # (features, k)
             k = self.spexfa_results['rank']
             labels = self.spexfa_results['labels']
 
             if self.wavenumbers is not None:
-                for i in range(k): ax1.plot(self.wavenumbers, ST[:, i], label=f"Skł. {i + 1}")
-            ax1.set_title("SPEXFA: Widma Wyizolowane");
-            ax1.set_xlabel("Liczba falowa");
-            ax1.set_ylabel("Intensywność")
+                for i in range(k): ax1.plot(self.wavenumbers, ST[:, i], label=f"Comp. {i + 1}")
+            ax1.set_title("SPEXFA: Isolated Spectra");
+            ax1.set_xlabel("Wavenumber");
+            ax1.set_ylabel("Intensity")
             self._set_wavenumber_axis_inverted(ax1);
             self._apply_theme_to_legend(ax1.legend(loc='best'), theme);
             ax1.grid(True, linestyle=':', alpha=0.2, color=theme['grid_color'])
 
             sample_indices = np.arange(len(labels))
-            for i in range(k): ax2.plot(sample_indices, C[:, i], 'o-', markersize=4, label=f"Skł. {i + 1}")
-            ax2.set_title("SPEXFA: Profile Stężeń");
-            ax2.set_xlabel("Próbka");
-            ax2.set_ylabel("Względne Stężenie")
+            for i in range(k): ax2.plot(sample_indices, C[:, i], 'o-', markersize=4, label=f"Comp. {i + 1}")
+            ax2.set_title("SPEXFA: Concentration Profiles");
+            ax2.set_xlabel("Sample");
+            ax2.set_ylabel("Relative Concentration")
             ax2.set_xticks(sample_indices);
             ax2.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
             self._apply_theme_to_legend(ax2.legend(loc='best'), theme);
@@ -2666,15 +2672,15 @@ class ChemTensorApp(ctk.CTk):
             
             data_source = self.preprocessed_tensor if self.show_preprocessed_var.get() and self.preprocessed_tensor is not None else self.tensor_data
             if data_source is not None:
-                # Suma po osi spektralnej (prosta wizualizacja)
+                # Sum over spectral axis (simple visualization)
                 heatmap_data = np.nansum(data_source, axis=0)
                 im = ax.imshow(heatmap_data, cmap='viridis', aspect='auto')
                 self.fig.colorbar(im, ax=ax)
-                ax.set_title("Mapa Ciepła (Suma Absorbancji)")
-                ax.set_xlabel("Indeks Kolumny (M)")
-                ax.set_ylabel("Indeks Wiersza (N)")
+                ax.set_title("Heatmap (Sum of Absorbance)")
+                ax.set_xlabel("Column Index (M)")
+                ax.set_ylabel("Row Index (N)")
             else:
-                ax.text(0.5, 0.5, "Brak danych do mapy ciepła", ha='center', va='center')
+                ax.text(0.5, 0.5, "No data for heatmap", ha='center', va='center')
 
         elif self.current_plot_mode == 'MANIFOLD_PLOT' and self.manifold_results:
             ax = self.fig.get_axes()[0]
@@ -2686,9 +2692,9 @@ class ChemTensorApp(ctk.CTk):
             ax.scatter(scores[:, 0], scores[:, 1])
             for i, label in enumerate(labels):
                 ax.text(scores[i, 0], scores[i, 1], label, fontsize=9, color=theme['text_color'])
-            ax.set_xlabel("Komponent 1");
-            ax.set_ylabel("Komponent 2")
-            ax.set_title(f"Wykres Wyników {method}");
+            ax.set_xlabel("Component 1");
+            ax.set_ylabel("Component 2")
+            ax.set_title(f"Manifold Plot: {method}");
             ax.grid(True, linestyle=':', alpha=0.2, color=theme['grid_color'])
 
         # Hide unused axes for 2x2 layouts
@@ -2789,7 +2795,7 @@ class ChemTensorApp(ctk.CTk):
     def _save_project(self):
         filepath = filedialog.asksaveasfilename(
             defaultextension=".json",
-            filetypes=[("Pliki Projektu ChemTensor", "*.json"), ("Wszystkie pliki", "*.*")]
+            filetypes=[("ChemTensor Project Files", "*.json"), ("All files", "*.*")]
         )
         if not filepath:
             return
@@ -2808,15 +2814,15 @@ class ChemTensorApp(ctk.CTk):
 
             with open(filepath, 'w') as f:
                 json.dump(project_data, f, indent=4)
-            messagebox.showinfo("Sukces", f"Projekt został pomyślnie zapisany w:\n{filepath}")
+            messagebox.showinfo("Success", f"Project saved successfully to:\n{filepath}")
 
         except Exception as e:
-            messagebox.showerror("Błąd Zapisu", f"Nie udało się zapisać projektu.\n{e}")
+            messagebox.showerror("Save Error", f"Failed to save project.\n{e}")
 
     def _load_project(self):
         filepath = filedialog.askopenfilename(
-            title="Wybierz plik projektu",
-            filetypes=[("Pliki Projektu ChemTensor", "*.json"), ("Wszystkie pliki", "*.*")]
+            title="Select Project File",
+            filetypes=[("ChemTensor Project Files", "*.json"), ("All files", "*.*")]
         )
         if not filepath:
             return
@@ -2844,22 +2850,22 @@ class ChemTensorApp(ctk.CTk):
                 self._apply_visuals_for_status(coords, status)
 
             self.update_plot()
-            messagebox.showinfo("Sukces", f"Projekt został pomyślnie wczytany z:\n{filepath}")
+            messagebox.showinfo("Success", f"Project loaded successfully from:\n{filepath}")
             self.focus_set()
 
         except Exception as e:
-            messagebox.showerror("Błąd Odczytu", f"Nie udało się wczytać projektu.\n{e}")
+            messagebox.showerror("Read Error", f"Failed to load project.\n{e}")
             self._create_field_matrix()
 
     def _export_to_xlsx(self):
         filepath = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
-            filetypes=[("Plik Excel", "*.xlsx"), ("Wszystkie pliki", "*.*")]
+            filetypes=[("Excel File", "*.xlsx"), ("All files", "*.*")]
         )
         if not filepath:
             return
 
-        print("Rozpoczynanie eksportu do XLSX...")
+        print("Starting XLSX export...")
         try:
             with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
                 if self.wavenumbers is not None:
@@ -2974,12 +2980,12 @@ class ChemTensorApp(ctk.CTk):
                                  index=self.manifold_results['labels']).to_excel(writer,
                                                                                  sheet_name=f"{self.manifold_results['method_name']}_Scores")
 
-            messagebox.showinfo("Sukces", f"Wyniki zostały pomyślnie wyeksportowane do:\n{filepath}")
+            messagebox.showinfo("Success", f"Results exported successfully to:\n{filepath}")
         except ImportError:
-            messagebox.showerror("Błąd Importu",
-                                 "Nie znaleziono biblioteki 'openpyxl' lub 'umap-learn'.\nUpewnij się, że są zainstalowane.")
+            messagebox.showerror("Import Error",
+                                 "Could not find 'openpyxl' or 'umap-learn' library.\nPlease ensure they are installed.")
         except Exception as e:
-            messagebox.showerror("Błąd Eksportu", f"Nie udało się wyeksportować pliku.\n{e}")
+            messagebox.showerror("Export Error", f"Failed to export file.\n{e}")
 
     def _export_figure(self, file_format):
         pass
