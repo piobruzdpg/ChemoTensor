@@ -1,0 +1,10 @@
+numpy
+pandas
+scipy
+matplotlib
+scikit-learn
+tensorly
+pymcr
+umap-learn
+openpyxl
+customtkinter
