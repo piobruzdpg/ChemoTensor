@@ -11,10 +11,10 @@ from pymcr.constraints import ConstraintNorm
 from scipy.linalg import pinv
 import umap
 
-# --- 1. PODSTAWOWE METODY (PCA, PLS, MANIFOLD) ---
+# --- 1. BASIC METHODS (PCA, PLS, MANIFOLD) ---
 
 def run_pca(X, n_components):
-    """Uruchamia PCA."""
+    """Runs PCA."""
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X.T).T
     
@@ -32,17 +32,17 @@ def run_pca(X, n_components):
     }
 
 def run_pca_reconstruction(pca_results, k):
-    """Odtwarza dane z k komponentów PCA."""
+    """Reconstructs data from k PCA components."""
     pca = pca_results['pca_model']
     scaler = pca_results['scaler']
     X_original = pca_results['X_original']
     scores = pca_results['scores']
     
-    # Zerujemy komponenty powyżej k
+    # Zero out components above k
     scores_k = np.copy(scores)
     scores_k[:, k:] = 0
     
-    # Odwracamy transformację
+    # Inverse transform
     X_recon_scaled = pca.inverse_transform(scores_k)
     X_reconstructed = scaler.inverse_transform(X_recon_scaled.T).T
     
@@ -55,14 +55,13 @@ def run_pca_reconstruction(pca_results, k):
     }
 
 def run_pls(tensor, target_y, n_components=1):
-    """Uruchamia PLS Regression."""
+    """Runs PLS Regression."""
     tensor_no_nan = np.nan_to_num(tensor, nan=0.0)
     w, n, m = tensor_no_nan.shape
     X = tensor_no_nan.transpose(1, 2, 0).reshape((n * m), w)
     
-    # Dopasowanie wymiarów (jeśli target_y jest krótszy/dłuższy - prosta walidacja)
     if X.shape[0] != target_y.shape[0]:
-        raise ValueError(f"Niezgodność wymiarów: Dane X mają {X.shape[0]} próbek, a cel y ma {target_y.shape[0]}.")
+        raise ValueError(f"Dimension mismatch: Data X has {X.shape[0]} samples, target y has {target_y.shape[0]}.")
 
     pls = PLSRegression(n_components=n_components)
     pls.fit(X, target_y)
@@ -80,10 +79,10 @@ def run_tsne(X, n_components=2):
     embedding = model.fit_transform(X)
     return embedding
 
-# --- 2. ANALIZA TENSOROWA (PARAFAC, TUCKER) ---
+# --- 2. TENSOR ANALYSIS (PARAFAC, TUCKER) ---
 
 def run_parafac(tensor, rank, non_negative=False):
-    """Uruchamia PARAFAC (CP Decomposition)."""
+    """Runs PARAFAC (CP Decomposition)."""
     tensor_no_nan = np.nan_to_num(tensor, nan=0.0)
     
     if non_negative:
@@ -97,7 +96,7 @@ def run_parafac(tensor, rank, non_negative=False):
     return {'weights': weights, 'factors': factors}
 
 def run_parafac_reconstruction(parafac_results, source_tensor, k):
-    """Rekonstrukcja z modelu PARAFAC."""
+    """Reconstruction from PARAFAC model."""
     weights = parafac_results['weights'][:k]
     factors = [f[:, :k] for f in parafac_results['factors']]
     
@@ -108,11 +107,11 @@ def run_parafac_reconstruction(parafac_results, source_tensor, k):
     return {
         'recon_tensor': reconstructed_tensor,
         'residual_tensor': residual_tensor,
-        'components': factors[0] # Widma
+        'components': factors[0] # Spectra
     }
 
 def run_tucker(tensor, ranks):
-    """Uruchamia Tucker Decomposition. ranks = [r_w, r_n, r_m]"""
+    """Runs Tucker Decomposition. ranks = [r_w, r_n, r_m]"""
     tensor_no_nan = np.nan_to_num(tensor, nan=0.0)
     core, factors = tl.decomposition.tucker(tensor_no_nan, rank=ranks)
     return {'core': core, 'factors': factors}
@@ -120,7 +119,7 @@ def run_tucker(tensor, ranks):
 # --- 3. MCR-ALS ---
 
 def run_mcr_als(tensor, rank, non_negative=True, norm=False, st_init=None, st_fix_indices=None):
-    """Uruchamia MCR-ALS."""
+    """Runs MCR-ALS."""
     tensor_no_nan = np.nan_to_num(tensor, nan=0.0)
     w, n, m = tensor_no_nan.shape
     D_matrix = tensor_no_nan.transpose(1, 2, 0).reshape((n * m), w)
@@ -138,7 +137,7 @@ def run_mcr_als(tensor, rank, non_negative=True, norm=False, st_init=None, st_fi
         c_regr = OLS()
         st_regr = OLS()
 
-    # Inicjalizacja ST
+    # Init ST
     final_st_init = np.random.rand(rank, n_features)
     if st_init is not None and st_fix_indices:
         for i, fix_idx in enumerate(st_fix_indices):
@@ -157,7 +156,7 @@ def run_mcr_als(tensor, rank, non_negative=True, norm=False, st_init=None, st_fi
     }
 
 def run_mcr_reconstruction(mcr_results, source_tensor, k):
-    """Rekonstrukcja z modelu MCR."""
+    """Reconstruction from MCR model."""
     C_k = mcr_results['C'][:, :k]
     ST_k = mcr_results['ST'][:, :k]
     
@@ -177,10 +176,10 @@ def run_mcr_reconstruction(mcr_results, source_tensor, k):
         'components': ST_k
     }
 
-# --- 4. ANALIZA CZYNNIKOWA (MALINOWSKI / SPEXFA) ---
+# --- 4. FACTOR ANALYSIS (MALINOWSKI / SPEXFA) ---
 
 def run_fa_rank_analysis(X):
-    """Oblicza RE, IND i wartości własne (Malinowski)."""
+    """Calculates RE, IND and eigenvalues (Malinowski)."""
     r, c = X.shape
     malinowski_r = c
     malinowski_c = r
@@ -188,7 +187,7 @@ def run_fa_rank_analysis(X):
     max_k = sm - 1
     
     if max_k < 1:
-        raise ValueError("Za mało danych do analizy FA.")
+        raise ValueError("Not enough data for FA.")
 
     u, s_vec, vh = np.linalg.svd(X, full_matrices=False)
     ev = s_vec ** 2
@@ -197,7 +196,6 @@ def run_fa_rank_analysis(X):
     ind = np.zeros(max_k)
     sev = np.zeros(sm + 1)
     
-    # Obliczanie błędu skumulowanego
     for k_sev in range(sm - 1, -1, -1):
         sev[k_sev] = sev[k_sev + 1] + ev[k_sev]
 
@@ -215,7 +213,7 @@ def run_fa_rank_analysis(X):
     }
 
 def run_fa_reconstruction(fa_results, k):
-    """Rekonstrukcja danych z SVD (Analiza Faktorowa)."""
+    """Reconstruction from SVD (Factor Analysis)."""
     u = fa_results['u']
     s_vec = fa_results['s_vec']
     vh = fa_results['vh']
@@ -229,15 +227,15 @@ def run_fa_reconstruction(fa_results, k):
     residuals = X_original - X_recon
     
     return {
-        'X_reconstructed': X_recon,  # <--- TU BYŁA ZMIANA (z 'X_recon')
+        'X_reconstructed': X_recon,
         'residuals': residuals,
         'loadings': vh_k.T,
         'scores': u_k @ s_k
     }
 
 def run_spexfa(X, n_components):
-    """Algorytm SPEXFA (Spectral Isolation)."""
-    D = X.T  # Transpozycja dla zgodności z oryginalnym algorytmem (cechy, próbki)
+    """SPEXFA Algorithm (Spectral Isolation)."""
+    D = X.T
     r, c = D.shape
     n = n_components
     
@@ -248,7 +246,7 @@ def run_spexfa(X, n_components):
     u_n = u[:, :n]
     s_n = s_mat[:n, :n]
     vh_n = vh[:n, :]
-    dr = u_n @ s_n @ vh_n # Odtworzone dane z n faktorów
+    dr = u_n @ s_n @ vh_n 
 
     # 2. Key Set Finding (Malinowski logic)
     ev = s_vec ** 2
@@ -258,7 +256,7 @@ def run_spexfa(X, n_components):
 
     ubar = u_n @ s_n
     
-    # Maskowanie szumu
+    # Noise masking
     ubar_norm = np.linalg.norm(ubar, axis=1)
     mask = ubar_norm < cutoff
     ubar_masked = np.copy(ubar)
@@ -266,16 +264,15 @@ def run_spexfa(X, n_components):
     
     ubar_norm_clean_indices = ~mask
     if np.sum(ubar_norm_clean_indices) == 0:
-        raise ValueError("Wszystkie zmienne są poniżej progu szumu.")
+        raise ValueError("All variables are below noise threshold.")
         
-    # Ważenie
+    # Weighting
     ubar_norm_clean = np.linalg.norm(ubar_masked[ubar_norm_clean_indices, :], axis=1, keepdims=True)
     ubar_masked[ubar_norm_clean_indices, :] = (ubar_masked[ubar_norm_clean_indices, :] * np.sqrt(c)) / ubar_norm_clean
 
-    # Algorytm iteracyjny znajdowania kluczy (Key Set)
+    # Iterative Key Set Finding
     key = [np.nanargmin(np.abs(ubar_masked[:, 0]))]
 
-    # Inicjalne wyszukiwanie kluczy
     for k_idx in range(1, n):
         w = ubar_masked[:, :k_idx + 1]
         ky = np.zeros((k_idx + 1, k_idx + 1))
@@ -326,7 +323,7 @@ def run_spexfa(X, n_components):
 # --- 5. 2D-COS ---
 
 def calculate_2dcos(D):
-    """Zwraca macierze synchroniczną i asynchroniczną."""
+    """Returns synchronous and asynchronous matrices."""
     n_features, n_samples = D.shape
     if n_samples < 2: return None, None 
 

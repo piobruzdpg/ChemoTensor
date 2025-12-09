@@ -6,7 +6,7 @@ from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import LinearRegression
 
 def apply_als_baseline(y, lam, p, n_iter=10):
-    """Oblicza linię bazową metodą ALS."""
+    """Calculates ALS baseline."""
     L = len(y)
     D = eye(L, format='csc')
     D = D[2:, :] - 2 * D[1:-1, :] + D[:-2, :]
@@ -21,7 +21,7 @@ def apply_als_baseline(y, lam, p, n_iter=10):
     return z
 
 def correction_als(tensor, lam, p):
-    """Aplikuje korekcję ALS dla całego tensora."""
+    """Applies ALS correction to the whole tensor."""
     tensor_copy = np.copy(tensor)
     w, n, m = tensor_copy.shape
     for r in range(n):
@@ -33,7 +33,7 @@ def correction_als(tensor, lam, p):
     return tensor_copy
 
 def apply_savgol(tensor, window, poly, deriv=2):
-    """Filtr Savitzky-Golay."""
+    """Savitzky-Golay Filter."""
     tensor_copy = np.copy(tensor)
     w, n, m = tensor_copy.shape
     for r in range(n):
@@ -59,7 +59,7 @@ def apply_snv(tensor):
     return tensor_copy
 
 def apply_min_max(tensor):
-    """Skalowanie Min-Max (0-1)."""
+    """Min-Max Scaling (0-1)."""
     tensor_copy = np.copy(tensor)
     w, n, m = tensor_copy.shape
     for r in range(n):
@@ -75,7 +75,7 @@ def apply_min_max(tensor):
     return tensor_copy
 
 def apply_l1_norm(tensor):
-    """Normalizacja do pola powierzchni (L1)."""
+    """Area Normalization (L1)."""
     tensor_copy = np.copy(tensor)
     w, n, m = tensor_copy.shape
     for r in range(n):
@@ -92,7 +92,7 @@ def apply_msc(tensor):
     tensor_copy = np.copy(tensor)
     w, n, m = tensor_copy.shape
     
-    # 1. Oblicz średnie widmo
+    # 1. Calculate mean spectrum
     all_spectra = []
     for r in range(n):
         for c in range(m):
@@ -100,12 +100,12 @@ def apply_msc(tensor):
                 all_spectra.append(tensor_copy[:, r, c])
     
     if not all_spectra:
-        raise ValueError("Brak danych do obliczenia widma referencyjnego.")
+        raise ValueError("No data to calculate reference spectrum.")
 
     mean_spectrum = np.mean(np.array(all_spectra), axis=0).reshape(-1, 1)
     model = LinearRegression()
 
-    # 2. Dopasuj i popraw
+    # 2. Fit and correct
     for r in range(n):
         for c in range(m):
             if not np.isnan(tensor_copy[0, r, c]):
@@ -118,4 +118,27 @@ def apply_msc(tensor):
                     tensor_copy[:, r, c] = (tensor_copy[:, r, c] - intercept) / slope
                 else:
                     tensor_copy[:, r, c] = tensor_copy[:, r, c] - intercept
+    return tensor_copy
+
+def apply_offset(tensor, wavenumbers, target_wavenumber, target_value=0.0):
+    """Przesuwa widma tak, aby w punkcie target_wavenumber miały wartość target_value."""
+    tensor_copy = np.copy(tensor)
+    w, n, m = tensor_copy.shape
+    
+    # Znajdź indeks najbliższy podanej liczbie falowej
+    if wavenumbers is None:
+        raise ValueError("Wavenumbers axis is missing.")
+        
+    idx = (np.abs(wavenumbers - target_wavenumber)).argmin()
+    
+    # Sprawdź, czy nie jesteśmy "poza zakresem" (opcjonalne, ale dobre dla bezpieczeństwa)
+    # Tutaj ufamy argmin, że znajdzie najbliższy.
+    
+    for r in range(n):
+        for c in range(m):
+            if not np.isnan(tensor_copy[0, r, c]):
+                spectrum = tensor_copy[:, r, c]
+                current_val = spectrum[idx]
+                shift = target_value - current_val
+                tensor_copy[:, r, c] = spectrum + shift
     return tensor_copy
