@@ -3,6 +3,7 @@ import matplotlib.figure
 import matplotlib.pyplot
 import numpy as np
 
+
 # --- Color Theme ---
 THEME_COLORS = {
     'Light': {'bg_color': '#ffffff', 'text_color': '#000000', 'grid_color': '#cccccc', 'spine_color': '#bbbbbb'},

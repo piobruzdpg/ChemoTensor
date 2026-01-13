@@ -5,6 +5,7 @@ from scipy.sparse import csc_matrix, eye, spdiags
 from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import LinearRegression
 
+
 def apply_als_baseline(y, lam, p, n_iter=10):
     """Calculates ALS baseline."""
     L = len(y)

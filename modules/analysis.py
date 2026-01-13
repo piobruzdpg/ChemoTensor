@@ -11,6 +11,7 @@ from pymcr.constraints import ConstraintNorm
 from scipy.linalg import pinv
 import umap
 
+
 # --- 1. BASIC METHODS (PCA, PLS, MANIFOLD) ---
 
 def run_pca(X, n_components):

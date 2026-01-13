@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import openpyxl
 
+
 # --- KLASA POMOCNICZA DO ZAPISU JSON ---
 class NumpyEncoder(json.JSONEncoder):
     """
