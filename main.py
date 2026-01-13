@@ -15,6 +15,7 @@ from modules import data_io
 from modules import visualization as vis
 
 
+
 # --- Status Color Constants ---
 STATUS_COLORS = {
     'EMPTY': ctk.ThemeManager.theme["CTkButton"]["fg_color"], 
