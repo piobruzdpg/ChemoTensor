@@ -23,12 +23,38 @@ class NumpyEncoder(json.JSONEncoder):
 # --- GŁÓWNE FUNKCJE ---
 
 def load_single_csv(file_path):
-    """Loads a single CSV file and returns wavenumbers and absorbance."""
+    """
+    Loads a single CSV file and returns wavenumbers and absorbance.
+    Automatically detects US format (dot decimal) vs PL format (comma decimal + semicolon).
+    """
     try:
-        data = pd.read_csv(file_path, header=None, usecols=[0, 1]).values
+        # KROK 1: Próba standardowa (format US/międzynarodowy)
+        # sep=None i engine='python' każe pandasowi zgadywać separator kolumn (np. tab, spacja, przecinek)
+        # decimal='.' to domyślne ustawienie
+        df = pd.read_csv(file_path, header=None, sep=None, engine='python', decimal='.', usecols=[0, 1])
+        
+        # Sprawdzamy, czy kolumny są faktycznie numeryczne.
+        # Jeśli wczytamy polski plik jako US, '1,23' zostanie wczytane jako tekst (object).
+        is_col0_num = np.issubdtype(df.iloc[:, 0].dtype, np.number)
+        is_col1_num = np.issubdtype(df.iloc[:, 1].dtype, np.number)
+
+        if not (is_col0_num and is_col1_num):
+            raise ValueError("Data not numeric, trying fallback...")
+
+    except (ValueError, pd.errors.ParserError):
+        # KROK 2: Próba "Polska" (średnik jako separator, przecinek jako dziesiętny)
+        try:
+            df = pd.read_csv(file_path, header=None, sep=';', decimal=',', usecols=[0, 1])
+        except Exception as e:
+            # Jeśli i to zawiedzie, poddajemy się
+            raise IOError(f"File read error (tried both US and PL formats): {e}")
+
+    # Ostateczne konwertowanie na float (dla pewności) i numpy array
+    try:
+        data = df.values.astype(float)
         return data[:, 0], data[:, 1]
-    except Exception as e:
-        raise IOError(f"File read error: {e}")
+    except ValueError as e:
+         raise IOError(f"Data conversion error. File may contain headers or non-numeric text: {e}")
 
 def save_project_json(filepath, n_rows, m_cols, wavenumbers, tensor_data, status_map, pipeline_steps):
     """
